@@ -13,7 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import java.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Embedded Ktor/Netty HTTP + WebSocket server.
@@ -49,8 +49,8 @@ class WebServer(
     fun start() {
         server = embeddedServer(Netty, port = port) {
             install(WebSockets) {
-                pingPeriod = Duration.ofSeconds(15)
-                timeout = Duration.ofSeconds(30)
+                pingPeriod = 15.seconds
+                timeout = 30.seconds
                 maxFrameSize = Long.MAX_VALUE
                 masking = false
             }

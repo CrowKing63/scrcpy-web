@@ -54,15 +54,15 @@ class ScreenCapture(private val context: Context) {
      */
     fun start(resultCode: Int, data: Intent, surface: Surface, width: Int, height: Int, dpi: Int) {
         val manager = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = manager.getMediaProjection(resultCode, data).also { projection ->
-            projection.registerCallback(projectionCallback, null)
-            virtualDisplay = projection.createVirtualDisplay(
-                "ScrcpyWebCapture",
-                width, height, dpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                surface, null, null
-            )
-        }
+        val projection = manager.getMediaProjection(resultCode, data) ?: return
+        mediaProjection = projection
+        projection.registerCallback(projectionCallback, null)
+        virtualDisplay = projection.createVirtualDisplay(
+            "ScrcpyWebCapture",
+            width, height, dpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            surface, null, null
+        )
     }
 
     /**

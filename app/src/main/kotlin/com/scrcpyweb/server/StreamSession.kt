@@ -1,7 +1,10 @@
 package com.scrcpyweb.server
 
 import com.scrcpyweb.service.TouchInjectionService
-import io.ktor.websocket.*
+import io.ktor.websocket.Frame
+import io.ktor.websocket.WebSocketSession
+import io.ktor.websocket.readText
+import io.ktor.websocket.send
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import org.json.JSONObject
@@ -19,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap
 class StreamSession {
 
     /** All currently connected WebSocket sessions, keyed by a unique session ID. */
-    private val sessions = ConcurrentHashMap<String, DefaultWebSocketServerSession>()
+    private val sessions = ConcurrentHashMap<String, WebSocketSession>()
 
     /** The latest fMP4 init segment. New clients receive this immediately on connect. */
     @Volatile
@@ -35,9 +38,9 @@ class StreamSession {
      *  1. Forwards fMP4 media segments received via [sendFrameToAll] to this client.
      *  2. Receives and processes JSON control messages from the client.
      *
-     * @param session The Ktor [DefaultWebSocketServerSession] for this connection.
+     * @param session The Ktor [WebSocketSession] for this connection.
      */
-    suspend fun handleSession(session: DefaultWebSocketServerSession) {
+    suspend fun handleSession(session: WebSocketSession) {
         val id = System.nanoTime().toString()
         sessions[id] = session
 
@@ -128,7 +131,7 @@ class StreamSession {
      * @param session The WebSocket session that sent the message, used for
      *                sending error responses.
      */
-    private suspend fun handleTextMessage(text: String, session: DefaultWebSocketServerSession) {
+    private suspend fun handleTextMessage(text: String, session: WebSocketSession) {
         try {
             val json = JSONObject(text)
             val type = json.optString("type")

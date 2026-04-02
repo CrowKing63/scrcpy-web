@@ -132,13 +132,15 @@ class MirrorService : Service() {
             }
 
             encoder.onEncodedFrame = { buffer, info ->
-                val muxer = fmp4Muxer ?: return@also
-                val frameData = ByteArray(info.size)
-                buffer.position(info.offset)
-                buffer.get(frameData)
-                val isKeyFrame = (info.flags and android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
-                val segment = muxer.muxFrame(frameData, isKeyFrame, info.presentationTimeUs, info.presentationTimeUs)
-                webServer?.streamSession?.sendFrameToAll(segment)
+                val muxer = fmp4Muxer
+                if (muxer != null) {
+                    val frameData = ByteArray(info.size)
+                    buffer.position(info.offset)
+                    buffer.get(frameData)
+                    val isKeyFrame = (info.flags and android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+                    val segment = muxer.muxFrame(frameData, isKeyFrame, info.presentationTimeUs, info.presentationTimeUs)
+                    webServer?.streamSession?.sendFrameToAll(segment)
+                }
             }
 
             encoder.start()
