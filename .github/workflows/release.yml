@@ -20,8 +20,11 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
+      - name: Verify Gradle wrapper
+        run: ./gradlew --version
+
       - name: Build release APK
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease --stacktrace
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
