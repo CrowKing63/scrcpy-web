@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SCRCPY-Web</string>
+    <string name="accessibility_service_label">SCRCPY-Web Touch Injection</string>
     <string name="accessibility_description">Allows remote touch injection from web browser. Does not monitor or intercept any input events.</string>
     <string name="notification_channel_name">Mirror Service</string>
     <string name="notification_title">SCRCPY-Web Server Running</string>
