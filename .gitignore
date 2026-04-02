@@ -38,18 +38,27 @@ out/
 .gradle/
 local.properties
 *.apk
+*.aab
 *.ap_
 *.dex
 *.class
 *.iml
 .idea/
 .navigation/
+build/
 app/build/
 bin/
 gen/
+captures/
 proguard/
 *.iws
 *.ipr
+*.hprof
+
+# Signing keys — never commit
+*.jks
+*.keystore
+keystore.properties
 
 # --- IDEs / Editors ---
 .vscode/
