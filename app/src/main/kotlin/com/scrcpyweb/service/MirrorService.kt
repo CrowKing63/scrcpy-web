@@ -1,0 +1,307 @@
+package com.scrcpyweb.service
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.wifi.WifiManager
+import android.os.BatteryManager
+import android.os.Build
+import android.os.IBinder
+import android.util.DisplayMetrics
+import android.view.WindowManager
+import androidx.core.app.NotificationCompat
+import com.scrcpyweb.capture.FMP4Muxer
+import com.scrcpyweb.capture.ScreenCapture
+import com.scrcpyweb.capture.VideoEncoder
+import com.scrcpyweb.server.WebServer
+import com.scrcpyweb.ui.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import java.net.Inet4Address
+import java.net.NetworkInterface
+
+/**
+ * Foreground service that orchestrates the entire screen mirroring pipeline.
+ *
+ * Lifecycle:
+ *  1. [onCreate] — starts the Ktor web server and posts a persistent notification.
+ *  2. [startCapture] — wires ScreenCapture → VideoEncoder → FMP4Muxer → WebSocket.
+ *  3. [stopCapture]  — tears down the capture pipeline in reverse order.
+ *  4. [onDestroy]   — stops the web server and cleans up all resources.
+ */
+class MirrorService : Service() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private var webServer: WebServer? = null
+    private var screenCapture: ScreenCapture? = null
+    private var videoEncoder: VideoEncoder? = null
+    private var fmp4Muxer: FMP4Muxer? = null
+
+    /** True while the screen capture pipeline is active. */
+    var isCapturing: Boolean = false
+        private set
+
+    /** Saved MediaProjection result code for restarting capture after rotation. */
+    private var savedProjectionResultCode: Int = 0
+
+    /** Saved MediaProjection result intent data for restarting capture after rotation. */
+    private var savedProjectionData: android.content.Intent? = null
+
+    // ─────────────────────────────────────────────────────────
+    //  Service lifecycle
+    // ─────────────────────────────────────────────────────────
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification(getWifiIpAddress()))
+        startWebServer()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        stopCapture()
+        webServer?.stop()
+        webServer = null
+        scope.cancel()
+        instance = null
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    // ─────────────────────────────────────────────────────────
+    //  Web server
+    // ─────────────────────────────────────────────────────────
+
+    private fun startWebServer() {
+        webServer = WebServer(port = 8080, assetManager = assets).also { server ->
+            server.onDeviceInfoRequest = { getDeviceInfo() }
+            server.onStartCapture = {
+                // MediaProjection requires an Activity to show the permission dialog.
+                // Return false here; the Activity will call startCapture() directly.
+                false
+            }
+            server.onStopCapture = { stopCapture() }
+            server.start()
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Capture pipeline
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Starts the screen capture → encode → mux → stream pipeline.
+     *
+     * @param resultCode MediaProjection permission result code.
+     * @param data       MediaProjection permission result intent data.
+     */
+    fun startCapture(resultCode: Int, data: Intent) {
+        if (isCapturing) stopCapture()
+        savedProjectionResultCode = resultCode
+        savedProjectionData = data
+
+        val metrics = getScreenMetrics()
+        val scale = getPreferredScale()
+        val width = (metrics.widthPixels * scale).toInt().roundToEven()
+        val height = (metrics.heightPixels * scale).toInt().roundToEven()
+        val dpi = metrics.densityDpi
+        val bitrate = getPreferredBitrate()
+        val fps = getPreferredFps()
+
+        videoEncoder = VideoEncoder(width, height, bitrate, fps).also { encoder ->
+            encoder.onSpsAvailable = { sps, pps ->
+                fmp4Muxer = FMP4Muxer(width, height, sps, pps)
+                val initSegment = fmp4Muxer!!.generateInitSegment()
+                scope.launch {
+                    webServer?.streamSession?.updateInitSegment(initSegment)
+                }
+            }
+
+            encoder.onEncodedFrame = { buffer, info ->
+                val muxer = fmp4Muxer ?: return@also
+                val frameData = ByteArray(info.size)
+                buffer.position(info.offset)
+                buffer.get(frameData)
+                val isKeyFrame = (info.flags and android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+                val segment = muxer.muxFrame(frameData, isKeyFrame, info.presentationTimeUs, info.presentationTimeUs)
+                webServer?.streamSession?.sendFrameToAll(segment)
+            }
+
+            encoder.start()
+
+            screenCapture = ScreenCapture(this).also { capture ->
+                capture.onStopped = {
+                    isCapturing = false
+                    updateNotification()
+                }
+                capture.start(resultCode, data, encoder.getInputSurface(), width, height, dpi)
+            }
+        }
+
+        isCapturing = true
+        updateNotification()
+    }
+
+    /**
+     * Stops the capture pipeline and releases all resources in reverse init order.
+     */
+    fun stopCapture() {
+        screenCapture?.stop()
+        screenCapture = null
+        videoEncoder?.stop()
+        videoEncoder = null
+        fmp4Muxer = null
+        isCapturing = false
+        updateNotification()
+    }
+
+    /**
+     * Handles a screen configuration change (e.g. rotation) by restarting the
+     * capture pipeline with fresh screen dimensions.
+     *
+     * No-op if no valid MediaProjection token has been saved yet.
+     */
+    fun handleConfigChange() {
+        val resultCode = savedProjectionResultCode
+        val data = savedProjectionData ?: return
+        if (resultCode == 0) return
+        stopCapture()
+        startCapture(resultCode, data)
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Device info
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Collects current device information for the REST API response.
+     *
+     * @return Map of device metadata: model, OS version, screen dimensions,
+     *         battery level, and the current Wi-Fi IP address.
+     */
+    fun getDeviceInfo(): Map<String, Any> {
+        val metrics = getScreenMetrics()
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val batteryLevel = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        return mapOf(
+            "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
+            "androidVersion" to Build.VERSION.RELEASE,
+            "screenWidth" to metrics.widthPixels,
+            "screenHeight" to metrics.heightPixels,
+            "batteryLevel" to batteryLevel,
+            "ipAddress" to getWifiIpAddress()
+        )
+    }
+
+    /**
+     * Attempts to resolve the device's IPv4 address on the active Wi-Fi or
+     * Ethernet interface. Falls back to "0.0.0.0" if no address is found.
+     *
+     * @return IPv4 address string (e.g. "192.168.1.42").
+     */
+    fun getWifiIpAddress(): String {
+        return try {
+            NetworkInterface.getNetworkInterfaces()
+                ?.asSequence()
+                ?.flatMap { it.inetAddresses.asSequence() }
+                ?.firstOrNull { !it.isLoopbackAddress && it is Inet4Address }
+                ?.hostAddress ?: "0.0.0.0"
+        } catch (e: Exception) {
+            "0.0.0.0"
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Notification helpers
+    // ─────────────────────────────────────────────────────────
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            getString(com.scrcpyweb.R.string.notification_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply { setShowBadge(false) }
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(ip: String): android.app.Notification {
+        val tapIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, tapIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val text = if (isCapturing) {
+            getString(com.scrcpyweb.R.string.notification_text_active,
+                webServer?.streamSession?.clientCount() ?: 0)
+        } else {
+            getString(com.scrcpyweb.R.string.notification_text_idle, "http://$ip:8080")
+        }
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(getString(com.scrcpyweb.R.string.notification_title))
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateNotification() {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, buildNotification(getWifiIpAddress()))
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Preference helpers
+    // ─────────────────────────────────────────────────────────
+
+    private fun getPreferredScale(): Float {
+        return getSharedPreferences("scrcpy_prefs", Context.MODE_PRIVATE)
+            .getFloat("scale", 0.75f)
+    }
+
+    private fun getPreferredBitrate(): Int {
+        return getSharedPreferences("scrcpy_prefs", Context.MODE_PRIVATE)
+            .getInt("bitrate", 4_000_000)
+    }
+
+    private fun getPreferredFps(): Int {
+        return getSharedPreferences("scrcpy_prefs", Context.MODE_PRIVATE)
+            .getInt("fps", 30)
+    }
+
+    private fun getScreenMetrics(): DisplayMetrics {
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        return DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Companion
+    // ─────────────────────────────────────────────────────────
+
+    companion object {
+        /** Singleton reference to the running service, or null if not running. */
+        @Volatile
+        var instance: MirrorService? = null
+
+        private const val CHANNEL_ID = "scrcpy_web_channel"
+        private const val NOTIFICATION_ID = 1001
+    }
+}
+
+/** Rounds an Int up to the nearest even number (required by some H264 encoders). */
+private fun Int.roundToEven(): Int = if (this % 2 == 0) this else this + 1

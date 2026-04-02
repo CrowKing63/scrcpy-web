@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SCRCPY-Web</string>
+    <string name="accessibility_description">Allows remote touch injection from web browser. Does not monitor or intercept any input events.</string>
+    <string name="notification_channel_name">Mirror Service</string>
+    <string name="notification_title">SCRCPY-Web Server Running</string>
+    <string name="notification_text_idle">Waiting for connection at %s</string>
+    <string name="notification_text_active">Streaming to %d client(s)</string>
+    <string name="btn_start_server">Start Server</string>
+    <string name="btn_stop_server">Stop Server</string>
+    <string name="btn_grant_permission">Grant Screen Capture Permission</string>
+    <string name="status_idle">Server idle</string>
+    <string name="status_waiting">Waiting for connection…</string>
+    <string name="status_streaming">Streaming</string>
+    <string name="status_error">Error: %s</string>
+    <string name="label_ip_address">Connect from browser:</string>
+    <string name="label_settings">Settings</string>
+    <string name="label_resolution">Resolution Scale</string>
+    <string name="label_bitrate">Bitrate (Mbps)</string>
+    <string name="label_fps">Max FPS</string>
+</resources>

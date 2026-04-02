@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="SCRCPY-Web — mirror and control your Android screen from any browser over Wi-Fi." />
+    <title>SCRCPY-Web</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+    <!-- ── Connection screen ─────────────────────────────────────── -->
+    <div id="connection-screen" class="screen active">
+        <div class="connect-card">
+            <div class="pulse-ring"></div>
+            <div class="connect-icon">📱</div>
+            <h1 class="connect-title">SCRCPY-Web</h1>
+            <p class="connect-status" id="connect-status-text">Connecting…</p>
+            <div id="device-info" class="device-info hidden"></div>
+        </div>
+    </div>
+
+    <!-- ── Mirror screen ─────────────────────────────────────────── -->
+    <div id="mirror-screen" class="screen hidden">
+        <video
+            id="video-player"
+            playsinline
+            muted
+            autoplay
+            disablePictureInPicture
+        ></video>
+
+        <!-- Status bar (top-right) -->
+        <div id="status-bar">
+            <span id="fps-counter">0 fps</span>
+            <span id="latency-indicator" class="hidden">—ms</span>
+            <span id="connection-status" class="status-dot connected"></span>
+        </div>
+
+        <!-- Control bar (bottom center) -->
+        <div id="control-bar">
+            <button class="ctrl-btn" id="btn-back"       title="Back"></button>
+            <button class="ctrl-btn" id="btn-home"       title="Home"></button>
+            <button class="ctrl-btn" id="btn-recents"    title="Recents"></button>
+            <div class="ctrl-divider"></div>
+            <button class="ctrl-btn" id="btn-vol-up"     title="Volume Up"></button>
+            <button class="ctrl-btn" id="btn-vol-down"   title="Volume Down"></button>
+            <div class="ctrl-divider"></div>
+            <button class="ctrl-btn" id="btn-power"      title="Power"></button>
+            <button class="ctrl-btn" id="btn-rotate"     title="Rotate"></button>
+            <button class="ctrl-btn" id="btn-fullscreen" title="Fullscreen"></button>
+            <button class="ctrl-btn" id="btn-settings"   title="Settings"></button>
+        </div>
+    </div>
+
+    <!-- ── Permission screen ─────────────────────────────────────── -->
+    <div id="permission-screen" class="screen hidden">
+        <div class="connect-card">
+            <div class="connect-icon">🔒</div>
+            <h2 class="connect-title">Permission Required</h2>
+            <p class="connect-status">Please tap <strong>Grant Screen Capture Permission</strong> in the SCRCPY-Web app on your phone, then tap Allow.</p>
+            <button class="action-btn" id="btn-request-capture">Request Capture</button>
+        </div>
+    </div>
+
+    <!-- ── Settings panel ────────────────────────────────────────── -->
+    <div id="settings-panel" class="panel hidden">
+        <div class="panel-header">
+            <span>Settings</span>
+            <button class="close-btn" id="btn-close-settings">✕</button>
+        </div>
+        <label class="setting-row">
+            <span>Resolution <span id="resolution-value">75%</span></span>
+            <input type="range" id="range-resolution" min="25" max="100" step="25" value="75" />
+        </label>
+        <label class="setting-row">
+            <span>Bitrate <span id="bitrate-value">4 Mbps</span></span>
+            <input type="range" id="range-bitrate" min="1" max="8" step="1" value="4" />
+        </label>
+        <label class="setting-row">
+            <span>Max FPS <span id="fps-value">30</span></span>
+            <input type="range" id="range-fps" min="15" max="60" step="5" value="30" />
+        </label>
+    </div>
+
+    <script src="icons.js"></script>
+    <script src="main.js" defer></script>
+</body>
+</html>

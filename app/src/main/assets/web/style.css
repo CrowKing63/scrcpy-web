@@ -1,0 +1,250 @@
+/* ── Design tokens ─────────────────────────────────────────────────── */
+:root {
+    --bg-primary:   #0a0a0f;
+    --bg-surface:   rgba(26, 26, 46, 0.85);
+    --accent-cyan:  #00e5ff;
+    --accent-green: #76ff03;
+    --text-primary: #e0e0e0;
+    --text-muted:   #9e9e9e;
+    --radius:       16px;
+    --blur:         20px;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+
+body {
+    background: var(--bg-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ── Screens ────────────────────────────────────────────────────────── */
+.screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.3s ease;
+}
+.screen.hidden { opacity: 0; pointer-events: none; }
+.screen.active  { opacity: 1; pointer-events: auto; }
+
+/* ── Connection / permission card ───────────────────────────────────── */
+.connect-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px 32px;
+    background: var(--bg-surface);
+    border-radius: var(--radius);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+}
+
+.connect-icon { font-size: 48px; }
+
+.connect-title {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+}
+
+.connect-status {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.device-info {
+    font-size: 12px;
+    color: var(--text-muted);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 12px;
+    width: 100%;
+}
+.device-info.hidden { display: none; }
+
+/* Pulsing ring animation */
+.pulse-ring {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-cyan);
+    animation: pulse 2s ease-out infinite;
+    opacity: 0;
+}
+@keyframes pulse {
+    0%   { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(2);   opacity: 0; }
+}
+
+/* ── Action button ──────────────────────────────────────────────────── */
+.action-btn {
+    margin-top: 8px;
+    padding: 12px 24px;
+    background: var(--accent-cyan);
+    color: #000;
+    border: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+.action-btn:active { opacity: 0.75; }
+
+/* ── Mirror screen ──────────────────────────────────────────────────── */
+#mirror-screen {
+    background: #000;
+    align-items: center;
+    justify-content: center;
+}
+
+#video-player {
+    max-width: 100%;
+    max-height: 100vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 0 40px rgba(0, 229, 255, 0.15);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* ── Status bar ─────────────────────────────────────────────────────── */
+#status-bar {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-surface);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    padding: 6px 12px;
+    border-radius: 20px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+.status-dot.connected    { background: var(--accent-green); }
+.status-dot.disconnected { background: #f44336; }
+
+/* ── Control bar ────────────────────────────────────────────────────── */
+#control-bar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 16px;
+    background: var(--bg-surface);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border-radius: 36px;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: opacity 0.4s ease;
+}
+#control-bar.hidden { opacity: 0; pointer-events: none; }
+
+.ctrl-btn {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+}
+.ctrl-btn:hover  { background: rgba(255,255,255,0.1); transform: scale(1.1); }
+.ctrl-btn:active { transform: scale(0.92); }
+.ctrl-btn svg    { pointer-events: none; }
+
+.ctrl-divider {
+    width: 1px;
+    height: 24px;
+    background: rgba(255,255,255,0.12);
+    margin: 0 4px;
+}
+
+/* ── Settings panel ─────────────────────────────────────────────────── */
+.panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(320px, 90vw);
+    background: var(--bg-surface);
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    border-left: 1px solid rgba(255,255,255,0.08);
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    transition: transform 0.3s ease;
+    transform: translateX(100%);
+    z-index: 100;
+}
+.panel.hidden   { transform: translateX(100%); }
+.panel.visible  { transform: translateX(0); }
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.setting-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: default;
+}
+
+.setting-row span { display: flex; justify-content: space-between; }
+
+.setting-row input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent-cyan);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────── */
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; }
+                     to   { transform: translateY(0);    opacity: 1; } }
