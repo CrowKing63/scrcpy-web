@@ -1,0 +1,75 @@
+# --- Base (Ignore all current files) ---
+# Use * to ignore everything by default if explicitly requested
+# *
+
+# --- Standard Node.js ---
+node_modules/
+jspm_packages/
+.npm/
+.eslintcache
+.node_repl_history
+yarn-error.log*
+npm-debug.log*
+
+# Logs
+logs/
+*.log
+lerna-debug.log*
+
+# Build artifacts
+dist/
+build/
+out/
+.next/
+.nuxt/
+.parcel-cache/
+.cache/
+.output/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# --- Android ---
+.gradle/
+local.properties
+*.apk
+*.ap_
+*.dex
+*.class
+*.iml
+.idea/
+.navigation/
+app/build/
+bin/
+gen/
+proguard/
+*.iws
+*.ipr
+
+# --- IDEs / Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+.project
+.settings/
+.classpath
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Project Specific (Claude, Docs, etc.) ---
+.claude/
+CLAUDE.md
+docs/
+
+# Essential files to remain tracked
+!.gitignore
