@@ -15,16 +15,15 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      - name: Verify Gradle wrapper
-        run: ./gradlew --version
+      - name: Download Gradle 8.11
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.11-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.11/bin" >> $GITHUB_PATH
 
       - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+        run: gradle assembleRelease
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
