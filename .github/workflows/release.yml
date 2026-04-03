@@ -54,17 +54,7 @@ jobs:
 
       - name: Ensure install.ps1 has UTF-8 BOM (required by PowerShell 5.x)
         run: |
-          python3 -c "
-path = 'installer/install.ps1'
-with open(path, 'r', encoding='utf-8') as f:
-    content = f.read()
-if not content.startswith('\ufeff'):
-    with open(path, 'w', encoding='utf-8-sig') as f:
-        f.write(content)
-    print('BOM added')
-else:
-    print('BOM already present')
-"
+          python3 -c "p='installer/install.ps1';d=open(p,'rb').read();open(p,'wb').write(d if d[:3]==b'\xef\xbb\xbf' else b'\xef\xbb\xbf'+d)"
 
       - name: Bundle Windows installer
         run: |
