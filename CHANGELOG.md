@@ -5,6 +5,16 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-04-03
+
+### Fixed
+- Black screen with no video: `trun data-offset` in fMP4 muxer was left as 0 (placeholder never
+  patched), causing browsers to look for sample data at the wrong position in each media segment
+- Set `tfhd` flag `default-base-is-moof` (0x020000) so the trun data-offset baseline is
+  unambiguously anchored to the start of the enclosing `moof` box, as required for live streaming
+- Browser-side: new fMP4 init segments sent after a pipeline restart (e.g. screen rotation) are now
+  appended to the existing SourceBuffer instead of being silently dropped
+
 ## [0.2.6] - 2026-04-03
 
 ### Fixed

@@ -274,7 +274,17 @@ class FMP4Muxer(
         val trun = buildTrun(isKeyFrame, pts, dts, dataSize)
         val traf = buildTraf(tfdt, trun)
         val mfhd = buildMfhd()
-        return buildBox("moof", mfhd + traf)
+        val moofBytes = buildBox("moof", mfhd + traf)
+        // Patch trun data-offset: offset from start of moof to first sample byte.
+        // Layout (all fixed-size): moof(8) + mfhd(16) + traf(8) + tfhd(16) + tfdt(16)
+        //   + trun(8) + version/flags(4) + sampleCount(4) + data-offset(4) = offset 80
+        // data-offset = moofSize + 8 (mdat box header)
+        val dataOffset = moofBytes.size + 8
+        moofBytes[80] = (dataOffset shr 24 and 0xFF).toByte()
+        moofBytes[81] = (dataOffset shr 16 and 0xFF).toByte()
+        moofBytes[82] = (dataOffset shr 8  and 0xFF).toByte()
+        moofBytes[83] = (dataOffset        and 0xFF).toByte()
+        return moofBytes
     }
 
     private fun buildMfhd(): ByteArray {
@@ -292,8 +302,8 @@ class FMP4Muxer(
 
     private fun buildTfhd(): ByteArray {
         val body = ByteArrayOutputStream()
-        body.write(0)                     // version
-        body.write(byteArrayOf(0, 0, 0))  // flags = default-base-is-moof
+        body.write(0)                        // version
+        body.write(byteArrayOf(0x02, 0, 0))  // flags: default-base-is-moof (0x020000)
         body.writeUint32(trackId.toLong())
         return buildBox("tfhd", body.toByteArray())
     }

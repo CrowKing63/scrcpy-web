@@ -128,7 +128,11 @@ class ScrcpyWeb {
      */
     _addSourceBuffer(initData) {
         if (!this._mediaSource || this._mediaSource.readyState !== 'open') return;
-        if (this._sourceBuffer) return; // already added
+        if (this._sourceBuffer) {
+            // Pipeline restarted — append new init segment to existing SourceBuffer
+            this._appendBuffer(initData);
+            return;
+        }
 
         const mimeType = 'video/mp4; codecs="avc1.42E01E"';
         if (!MediaSource.isTypeSupported(mimeType)) {
