@@ -52,13 +52,36 @@ graph LR
 
 ---
 
+## Installation
+
+### Windows Installer (Recommended)
+
+No ADB knowledge required — the installer guides you step by step.
+
+1. Download `scrcpy-web-vX.Y.Z-windows-installer.zip` from the [Releases](https://github.com/your-username/scrcpy-web/releases) page.
+2. Extract the zip.
+3. Double-click **`install.bat`**.
+4. Choose your language and follow the on-screen instructions.
+
+> Supports: English, Korean, Japanese, Chinese (Simplified), Spanish.
+> Requires Android 11+ for wireless debugging. No USB cable needed.
+
+The installer will walk you through: enabling Developer Options → Wireless Debugging → pairing → connecting → installing the APK — all automatically.
+
+### Manual Install (macOS / Linux / Advanced)
+
+See [docs/installation.md](docs/installation.md) for manual ADB instructions and troubleshooting.
+
+---
+
 ## Quick Start
 
-1. **Install** the APK from the [Releases](https://github.com/your-username/scrcpy-web/releases) page
-2. **Grant permissions** in the SCRCPY-Web app:
+After installing the APK:
+
+1. **Grant permissions** in the SCRCPY-Web app:
    - Tap **Grant Screen Capture Permission** → Allow
    - Tap **Enable Accessibility Service** → find SCRCPY-Web → toggle on
-3. **Open browser** on another device on the same Wi-Fi and navigate to the IP shown in the app (e.g. `http://192.168.1.42:8080`)
+2. **Open browser** on another device on the same Wi-Fi and navigate to the IP shown in the app (e.g. `http://192.168.1.42:8080`)
 
 ---
 

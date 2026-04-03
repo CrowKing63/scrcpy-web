@@ -78,7 +78,8 @@ Desktop.ini
 # --- Project Specific (Claude, Docs, etc.) ---
 .claude/
 CLAUDE.md
-docs/
+docs/*
+!docs/installation.md
 
 # Essential files to remain tracked
 !.gitignore

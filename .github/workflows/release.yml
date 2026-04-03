@@ -37,8 +37,67 @@ jobs:
       - name: Build release APK
         run: gradle assembleRelease
 
+      - name: Download ADB platform-tools (Windows)
+        run: |
+          wget -q https://dl.google.com/android/repository/platform-tools-latest-windows.zip \
+            -O /tmp/platform-tools-windows.zip
+          mkdir -p /tmp/adb-win
+          unzip -q /tmp/platform-tools-windows.zip \
+            'platform-tools/adb.exe' \
+            'platform-tools/AdbWinApi.dll' \
+            'platform-tools/AdbWinUsbApi.dll' \
+            -d /tmp/adb-win/ || true
+          # Fallback: extract whatever adb files are present
+          unzip -q /tmp/platform-tools-windows.zip \
+            'platform-tools/adb.exe' \
+            -d /tmp/adb-win/ 2>/dev/null || true
+
+      - name: Bundle Windows installer
+        run: |
+          TAG="${{ github.ref_name }}"
+          BUNDLE_DIR="bundle"
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          APK_NAME=$(basename "$APK")
+
+          mkdir -p "$BUNDLE_DIR/adb"
+
+          # Copy ADB binaries
+          cp /tmp/adb-win/platform-tools/adb.exe "$BUNDLE_DIR/adb/"
+          cp /tmp/adb-win/platform-tools/AdbWinApi.dll "$BUNDLE_DIR/adb/" 2>/dev/null || true
+          cp /tmp/adb-win/platform-tools/AdbWinUsbApi.dll "$BUNDLE_DIR/adb/" 2>/dev/null || true
+
+          # Copy APK and installer script
+          cp "$APK" "$BUNDLE_DIR/"
+          cp installer/install.bat "$BUNDLE_DIR/"
+
+          # Create zip
+          cd "$BUNDLE_DIR"
+          zip -r "../scrcpy-web-${TAG}-windows-installer.zip" .
+          cd ..
+
+          echo "BUNDLE_ZIP=scrcpy-web-${TAG}-windows-installer.zip" >> $GITHUB_ENV
+          echo "APK_PATH=$APK" >> $GITHUB_ENV
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            ${{ env.APK_PATH }}
+            ${{ env.BUNDLE_ZIP }}
           generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Option A — Windows Installer (Recommended)
+            1. Download `scrcpy-web-${{ github.ref_name }}-windows-installer.zip`
+            2. Extract the zip
+            3. Double-click `install.bat`
+            4. Follow the on-screen steps (supports English, Korean, Japanese, Chinese, Spanish)
+
+            > Requires Android 11+ for wireless debugging. No USB cable needed.
+
+            ### Option B — Manual APK Install
+            Download the `.apk` file and sideload it manually via ADB or a file manager.
+
+            ---
+            See [Installation Guide](https://github.com/${{ github.repository }}/blob/main/docs/installation.md) for detailed instructions.
