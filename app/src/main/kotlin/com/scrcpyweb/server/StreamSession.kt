@@ -44,23 +44,27 @@ class StreamSession {
         val id = System.nanoTime().toString()
         sessions[id] = session
 
-        // Send init segment immediately so MSE can initialise the SourceBuffer
+        // Per-session channel carries pre-headered raw WebSocket payloads so that
+        // init segments (0x01) and media frames (0x02) share the same queue and
+        // are guaranteed to arrive at the client in insertion order.
+        // The listener is registered BEFORE enqueuing the init segment so that
+        // any concurrent updateInitSegment() call also goes through the channel.
+        val frameChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 64)
+        frameListeners[id] = { rawFrame -> frameChannel.trySend(rawFrame) }
+
+        // Enqueue init segment through the channel so it is ordered correctly
+        // relative to any media frames that follow immediately.
         initSegment?.let { init ->
             val header = buildHeader(0x01, init.size)
-            session.send(Frame.Binary(true, header + init))
+            frameChannel.trySend(header + init)
         }
-
-        // Per-session frame channel: avoids head-of-line blocking between clients
-        val frameChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 60)
-        frameListeners[id] = { frame -> frameChannel.trySend(frame) }
 
         try {
             coroutineScope {
-                // Sender coroutine: relay encoded frames to this client
+                // Sender coroutine: relay pre-headered frames to this client as-is
                 val senderJob = launch {
-                    for (frame in frameChannel) {
-                        val header = buildHeader(0x02, frame.size)
-                        session.send(Frame.Binary(true, header + frame))
+                    for (rawFrame in frameChannel) {
+                        session.send(Frame.Binary(true, rawFrame))
                     }
                 }
 
@@ -94,23 +98,30 @@ class StreamSession {
      *
      * @param frameData Raw fMP4 segment bytes (moof + mdat).
      */
+    /**
+     * Broadcasts an fMP4 media segment to all connected clients via their
+     * per-session channels, preserving ordering with init segments.
+     *
+     * @param frameData Raw fMP4 segment bytes (moof + mdat).
+     */
     fun sendFrameToAll(frameData: ByteArray) {
-        frameListeners.values.forEach { listener -> listener(frameData) }
+        val header = buildHeader(0x02, frameData.size)
+        val packet = header + frameData
+        frameListeners.values.forEach { listener -> listener(packet) }
     }
 
     /**
-     * Updates the stored init segment and broadcasts it to all existing clients.
-     * Called when a new encoding session starts (e.g. after screen rotation).
+     * Updates the stored init segment and enqueues it to all existing clients
+     * via their per-session channels so ordering relative to media frames is
+     * preserved.
      *
      * @param segment New fMP4 init segment (ftyp + moov).
      */
-    suspend fun updateInitSegment(segment: ByteArray) {
+    fun updateInitSegment(segment: ByteArray) {
         initSegment = segment
         val header = buildHeader(0x01, segment.size)
-        val frame = Frame.Binary(true, header + segment)
-        sessions.values.forEach { session ->
-            runCatching { session.send(frame) }
-        }
+        val packet = header + segment
+        frameListeners.values.forEach { listener -> listener(packet) }
     }
 
     /**

@@ -5,6 +5,18 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-04-03
+
+### Fixed
+- Video frozen after first frame: init segment and media frames were delivered through
+  separate code paths (scope.launch vs direct call), allowing media frames to arrive at
+  the browser before the init segment. All payloads now flow through the same per-session
+  channel, guaranteeing in-order delivery.
+- StreamSession: frameListeners now registered before enqueuing the init segment so a
+  concurrent updateInitSegment() call cannot bypass the channel.
+- MirrorService: removed unnecessary CoroutineScope — updateInitSegment() is now a
+  plain (non-suspend) function called directly from the encoder HandlerThread.
+
 ## [0.2.8] - 2026-04-03
 
 ### Fixed

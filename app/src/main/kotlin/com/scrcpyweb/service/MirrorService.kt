@@ -20,11 +20,6 @@ import com.scrcpyweb.capture.ScreenCapture
 import com.scrcpyweb.capture.VideoEncoder
 import com.scrcpyweb.server.WebServer
 import com.scrcpyweb.ui.MainActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -38,8 +33,6 @@ import java.net.NetworkInterface
  *  4. [onDestroy]   — stops the web server and cleans up all resources.
  */
 class MirrorService : Service() {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var webServer: WebServer? = null
     private var screenCapture: ScreenCapture? = null
@@ -102,7 +95,6 @@ class MirrorService : Service() {
         stopCapture()
         webServer?.stop()
         webServer = null
-        scope.cancel()
         instance = null
         super.onDestroy()
     }
@@ -153,9 +145,7 @@ class MirrorService : Service() {
             encoder.onSpsAvailable = { sps, pps ->
                 fmp4Muxer = FMP4Muxer(width, height, sps, pps)
                 val initSegment = fmp4Muxer!!.generateInitSegment()
-                scope.launch {
-                    webServer?.streamSession?.updateInitSegment(initSegment)
-                }
+                webServer?.streamSession?.updateInitSegment(initSegment)
             }
 
             encoder.onEncodedFrame = { buffer, info ->
