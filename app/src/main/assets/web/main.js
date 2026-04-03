@@ -12,6 +12,7 @@ class ScrcpyWeb {
         this._mediaSource = null;
         this._sourceBuffer = null;
         this._segmentQueue = [];
+        this._pendingInitData = null;
         this._frameCount = 0;
         this._fpsInterval = null;
         this._reconnectDelay = 1000;
@@ -88,12 +89,25 @@ class ScrcpyWeb {
             console.error('MediaSource API not supported in this browser.');
             return;
         }
+        this._pendingInitData = null;
         this._mediaSource = new MediaSource();
         const video = document.getElementById('video-player');
         video.src = URL.createObjectURL(this._mediaSource);
 
         this._mediaSource.addEventListener('sourceopen', () => {
-            // SourceBuffer is added after receiving the init segment (type 0x01)
+            // If an init segment arrived before sourceopen fired, apply it now.
+            if (this._pendingInitData) {
+                const data = this._pendingInitData;
+                this._pendingInitData = null;
+                this._addSourceBuffer(data);
+            }
+        });
+
+        // Resume playback if the live stream temporarily stalls.
+        video.addEventListener('pause', () => {
+            if (this._sourceBuffer && this._mediaSource?.readyState === 'open') {
+                video.play().catch(() => {});
+            }
         });
 
         this._startFpsCounter();
@@ -127,9 +141,13 @@ class ScrcpyWeb {
      * @param {ArrayBuffer} initData fMP4 init segment bytes.
      */
     _addSourceBuffer(initData) {
-        if (!this._mediaSource || this._mediaSource.readyState !== 'open') return;
+        if (!this._mediaSource || this._mediaSource.readyState !== 'open') {
+            // sourceopen has not fired yet — buffer the init segment and apply it then.
+            this._pendingInitData = initData;
+            return;
+        }
         if (this._sourceBuffer) {
-            // Pipeline restarted — append new init segment to existing SourceBuffer
+            // Pipeline restarted — append new init segment to existing SourceBuffer.
             this._appendBuffer(initData);
             return;
         }
@@ -213,6 +231,7 @@ class ScrcpyWeb {
     _teardownMSE() {
         this._sourceBuffer = null;
         this._segmentQueue = [];
+        this._pendingInitData = null;
         if (this._mediaSource) {
             try { this._mediaSource.endOfStream(); } catch (_) { /* ignore */ }
             this._mediaSource = null;

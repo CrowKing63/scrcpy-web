@@ -5,6 +5,16 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-04-03
+
+### Fixed
+- Black screen on initial connection: race condition where the server's init segment arrived
+  over WebSocket before `MediaSource.sourceopen` had fired; the segment was silently dropped
+  and no SourceBuffer was ever created. Init segment is now buffered in `_pendingInitData`
+  and applied inside the `sourceopen` handler.
+- Video stalling after live stream buffer underrun: added `pause` event handler on the video
+  element to call `play()` and resume automatically.
+
 ## [0.2.7] - 2026-04-03
 
 ### Fixed
