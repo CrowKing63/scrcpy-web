@@ -3,6 +3,7 @@ package com.scrcpyweb.capture
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
@@ -29,6 +30,8 @@ class VideoEncoder(
     private var codec: MediaCodec? = null
     private var inputSurface: Surface? = null
     private var handlerThread: HandlerThread? = null
+    private var handler: Handler? = null
+    private var keyframeRunnable: Runnable? = null
 
     /** Invoked on each encoded frame with the raw ByteBuffer and its metadata. */
     var onEncodedFrame: ((ByteBuffer, MediaCodec.BufferInfo) -> Unit)? = null
@@ -50,7 +53,7 @@ class VideoEncoder(
      */
     fun start() {
         handlerThread = HandlerThread("VideoEncoderThread").also { it.start() }
-        val handler = Handler(handlerThread!!.looper)
+        handler = Handler(handlerThread!!.looper)
 
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -59,6 +62,9 @@ class VideoEncoder(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            // Repeat the last frame when the screen is static so the encoder
+            // keeps producing output even if VirtualDisplay sends nothing new.
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1_000_000L / fps)
         }
 
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).also { c ->
@@ -94,17 +100,34 @@ class VideoEncoder(
             inputSurface = c.createInputSurface()
             c.start()
         }
+
+        // Periodically request a sync frame so slow/static-screen streams
+        // always have a fresh IDR for newly connected clients.
+        keyframeRunnable = object : Runnable {
+            override fun run() {
+                try {
+                    codec?.setParameters(Bundle().apply {
+                        putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                    })
+                } catch (_: Exception) { /* codec may have been released */ }
+                handler?.postDelayed(this, KEYFRAME_REQUEST_INTERVAL_MS)
+            }
+        }
+        handler?.postDelayed(keyframeRunnable!!, KEYFRAME_REQUEST_INTERVAL_MS)
     }
 
     /**
      * Stops encoding and releases all MediaCodec resources.
      */
     fun stop() {
+        keyframeRunnable?.let { handler?.removeCallbacks(it) }
+        keyframeRunnable = null
         codec?.stop()
         codec?.release()
         codec = null
         inputSurface?.release()
         inputSurface = null
+        handler = null
         handlerThread?.quitSafely()
         handlerThread = null
     }
@@ -113,6 +136,11 @@ class VideoEncoder(
      * Parses codec-specific data to extract SPS and PPS NAL units.
      * The codec-specific data is in Annex B format: [00 00 00 01 SPS 00 00 00 01 PPS].
      */
+    companion object {
+        /** Interval between forced IDR requests (milliseconds). */
+        private const val KEYFRAME_REQUEST_INTERVAL_MS = 2000L
+    }
+
     private fun parseSpsAndPps(buffer: ByteBuffer, info: MediaCodec.BufferInfo) {
         val data = ByteArray(info.size)
         buffer.position(info.offset)

@@ -19,6 +19,7 @@ class ScrcpyWeb {
         this._liveEdgeTimer = null;
         this._reconnectDelay = 1000;
         this._hideBarTimer = null;
+        this._flushTimer = null;
         this._pointers = new Map();
 
         this._initIcons();
@@ -179,8 +180,11 @@ class ScrcpyWeb {
             this._trimBuffer();
         });
 
-        this._sourceBuffer.addEventListener('error', (e) => {
-            console.error('SourceBuffer error:', e);
+        this._sourceBuffer.addEventListener('error', () => {
+            console.error('SourceBuffer error — resetting pipeline, waiting for next init segment');
+            this._sourceBuffer = null;
+            this._segmentQueue = [];
+            this._pendingSegments = [];
         });
 
         this._appendBuffer(initData);
@@ -206,9 +210,24 @@ class ScrcpyWeb {
                 this._sourceBuffer.appendBuffer(data);
             } catch (e) {
                 console.warn('appendBuffer error:', e);
+                // No updateend will fire after a throw, so schedule a retry
+                // to keep the pipeline alive.
                 this._segmentQueue.push(data);
+                this._scheduleFlush();
             }
         }
+    }
+
+    /**
+     * Schedules a deferred flush attempt so the pipeline recovers when
+     * appendBuffer throws (no updateend fires in that case).
+     */
+    _scheduleFlush() {
+        if (this._flushTimer) return;
+        this._flushTimer = setTimeout(() => {
+            this._flushTimer = null;
+            this._flushQueue();
+        }, 100);
     }
 
     /** Drains the segment queue when the SourceBuffer is ready. */
@@ -220,6 +239,9 @@ class ScrcpyWeb {
             this._sourceBuffer.appendBuffer(next);
         } catch (e) {
             console.warn('flushQueue error:', e);
+            // Drop the failed segment (likely corrupt or QuotaExceeded)
+            // and schedule another attempt for remaining items.
+            this._scheduleFlush();
         }
     }
 
@@ -253,6 +275,8 @@ class ScrcpyWeb {
         this._segmentQueue = [];
         this._pendingInitData = null;
         this._pendingSegments = [];
+        clearTimeout(this._flushTimer);
+        this._flushTimer = null;
         if (this._mediaSource) {
             try { this._mediaSource.endOfStream(); } catch (_) { /* ignore */ }
             this._mediaSource = null;

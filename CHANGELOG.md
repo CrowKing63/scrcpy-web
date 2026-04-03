@@ -5,6 +5,18 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-04-03
+
+### Fixed
+- Video freezing on static screens: encoder now sets `KEY_REPEAT_PREVIOUS_FRAME_AFTER`
+  so MediaCodec keeps producing frames even when VirtualDisplay sends no new content
+- Periodic IDR (keyframe) requests every 2 seconds ensure newly connected clients
+  always receive a decodable frame quickly
+- `appendBuffer` throw killing the MSE pipeline: a failed append no longer blocks
+  the segment queue — a deferred retry via `setTimeout` keeps the pipeline alive
+- `SourceBuffer` error event now resets the pipeline state (`_sourceBuffer = null`,
+  queues cleared) so the next init segment from the server can re-establish playback
+
 ## [0.3.0] - 2026-04-03
 
 ### Fixed
