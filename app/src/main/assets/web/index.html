@@ -25,35 +25,91 @@
 
     <!-- ── Mirror screen ─────────────────────────────────────────── -->
     <div id="mirror-screen" class="screen hidden">
-        <video
-            id="video-player"
-            playsinline
-            muted
-            autoplay
-            disablePictureInPicture
-        ></video>
 
-        <!-- Status bar (top-right) -->
-        <div id="status-bar">
-            <span id="fps-counter">0 fps</span>
-            <span id="latency-indicator" class="hidden">—ms</span>
-            <span id="connection-status" class="status-dot connected"></span>
+        <!-- Left sidebar: stats + settings + system controls -->
+        <aside id="left-sidebar" class="sidebar" aria-label="Stream stats and settings">
+            <button class="sidebar-toggle" id="left-toggle" aria-label="Collapse left panel">
+                <span class="toggle-arrow" id="left-arrow"></span>
+            </button>
+            <div class="sidebar-content">
+
+                <!-- Live stats -->
+                <section class="sidebar-section">
+                    <h2 class="sidebar-section-title">Stats</h2>
+                    <div class="stat-row">
+                        <span>FPS</span>
+                        <span class="stat-value" id="fps-counter">0 fps</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Latency</span>
+                        <span class="stat-value" id="latency-indicator">—</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Status</span>
+                        <span class="stat-value status-row-value">
+                            <span id="connection-status" class="status-dot connected"></span>
+                            <span id="connection-status-label">Connected</span>
+                        </span>
+                    </div>
+                </section>
+
+                <!-- Stream settings -->
+                <section class="sidebar-section">
+                    <h2 class="sidebar-section-title">Stream</h2>
+                    <label class="setting-row">
+                        <span>Resolution <span id="resolution-value">75%</span></span>
+                        <input type="range" id="range-resolution" min="25" max="100" step="25" value="75" />
+                    </label>
+                    <label class="setting-row">
+                        <span>Bitrate <span id="bitrate-value">4 Mbps</span></span>
+                        <input type="range" id="range-bitrate" min="1" max="8" step="1" value="4" />
+                    </label>
+                    <label class="setting-row">
+                        <span>Max FPS <span id="fps-value">30</span></span>
+                        <input type="range" id="range-fps" min="15" max="60" step="5" value="30" />
+                    </label>
+                </section>
+
+                <!-- System controls -->
+                <section class="sidebar-section">
+                    <h2 class="sidebar-section-title">System</h2>
+                    <div class="system-btn-row">
+                        <button class="sys-btn" id="btn-rotate"     title="Rotate screen"  aria-label="Rotate screen"></button>
+                        <button class="sys-btn" id="btn-fullscreen" title="Fullscreen"      aria-label="Toggle fullscreen"></button>
+                    </div>
+                </section>
+
+            </div>
+        </aside>
+
+        <!-- Center: video -->
+        <div id="video-area">
+            <video
+                id="video-player"
+                playsinline
+                muted
+                autoplay
+                disablePictureInPicture
+            ></video>
         </div>
 
-        <!-- Control bar (bottom center) -->
-        <div id="control-bar">
-            <button class="ctrl-btn" id="btn-back"       title="Back"></button>
-            <button class="ctrl-btn" id="btn-home"       title="Home"></button>
-            <button class="ctrl-btn" id="btn-recents"    title="Recents"></button>
-            <div class="ctrl-divider"></div>
-            <button class="ctrl-btn" id="btn-vol-up"     title="Volume Up"></button>
-            <button class="ctrl-btn" id="btn-vol-down"   title="Volume Down"></button>
-            <div class="ctrl-divider"></div>
-            <button class="ctrl-btn" id="btn-power"      title="Power"></button>
-            <button class="ctrl-btn" id="btn-rotate"     title="Rotate"></button>
-            <button class="ctrl-btn" id="btn-fullscreen" title="Fullscreen"></button>
-            <button class="ctrl-btn" id="btn-settings"   title="Settings"></button>
-        </div>
+        <!-- Right sidebar: customizable keypad -->
+        <aside id="right-sidebar" class="sidebar" aria-label="Customizable keypad">
+            <button class="sidebar-toggle" id="right-toggle" aria-label="Collapse right panel">
+                <span class="toggle-arrow" id="right-arrow"></span>
+            </button>
+            <div class="sidebar-content">
+                <div class="keypad-header">
+                    <span class="keypad-title">Controls</span>
+                    <div class="keypad-header-btns">
+                        <button class="icon-btn" id="btn-add-key"    title="Add button"   aria-label="Add button"   style="display:none"></button>
+                        <button class="icon-btn" id="btn-edit-keypad" title="Edit keypad" aria-label="Toggle edit mode"></button>
+                    </div>
+                </div>
+                <div id="keypad-grid"></div>
+            </div>
+        </aside>
+
     </div>
 
     <!-- ── Permission screen ─────────────────────────────────────── -->
@@ -66,24 +122,85 @@
         </div>
     </div>
 
-    <!-- ── Settings panel ────────────────────────────────────────── -->
-    <div id="settings-panel" class="panel hidden">
-        <div class="panel-header">
-            <span>Settings</span>
-            <button class="close-btn" id="btn-close-settings">✕</button>
+    <!-- ── Key editor modal ──────────────────────────────────────── -->
+    <div id="key-editor-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-backdrop" id="modal-backdrop"></div>
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-title">Add Button</h3>
+                <button class="modal-close-btn" id="btn-modal-cancel" aria-label="Close modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-field">
+                    <label for="key-label-input">Label</label>
+                    <input type="text" id="key-label-input" placeholder="Button label" maxlength="20" />
+                </div>
+                <div class="modal-field">
+                    <label for="key-action-type">Action type</label>
+                    <select id="key-action-type">
+                        <option value="nav">Navigation</option>
+                        <option value="scroll">Scroll</option>
+                        <option value="key">Key code</option>
+                        <option value="text">Type text</option>
+                    </select>
+                </div>
+
+                <!-- Nav params -->
+                <div class="action-params active" id="params-nav">
+                    <div class="modal-field">
+                        <label for="nav-action-select">Action</label>
+                        <select id="nav-action-select">
+                            <option value="back">Back</option>
+                            <option value="home">Home</option>
+                            <option value="recents">Recents</option>
+                            <option value="volumeUp">Volume Up</option>
+                            <option value="volumeDown">Volume Down</option>
+                            <option value="power">Power</option>
+                            <option value="rotate">Rotate</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Scroll params -->
+                <div class="action-params" id="params-scroll">
+                    <div class="modal-field">
+                        <label for="scroll-dir-select">Direction</label>
+                        <select id="scroll-dir-select">
+                            <option value="up">Up</option>
+                            <option value="down">Down</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                        </select>
+                    </div>
+                    <div class="modal-field">
+                        <label for="scroll-delta-input">Delta (px)</label>
+                        <input type="number" id="scroll-delta-input" value="120" min="10" max="1000" step="10" />
+                    </div>
+                </div>
+
+                <!-- Key params -->
+                <div class="action-params" id="params-key">
+                    <div class="modal-field">
+                        <label for="key-code-input">Android key code</label>
+                        <input type="number" id="key-code-input" placeholder="e.g. 66 for Enter" min="1" max="999" />
+                    </div>
+                </div>
+
+                <!-- Text params -->
+                <div class="action-params" id="params-text">
+                    <div class="modal-field">
+                        <label for="key-text-input">Text to type</label>
+                        <input type="text" id="key-text-input" placeholder="e.g. Hello" maxlength="100" />
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-danger" id="btn-modal-delete" style="display:none">Delete</button>
+                <div style="flex:1"></div>
+                <button class="modal-btn modal-btn-secondary" id="btn-modal-cancel2">Cancel</button>
+                <button class="modal-btn modal-btn-primary" id="btn-modal-save">Save</button>
+            </div>
         </div>
-        <label class="setting-row">
-            <span>Resolution <span id="resolution-value">75%</span></span>
-            <input type="range" id="range-resolution" min="25" max="100" step="25" value="75" />
-        </label>
-        <label class="setting-row">
-            <span>Bitrate <span id="bitrate-value">4 Mbps</span></span>
-            <input type="range" id="range-bitrate" min="1" max="8" step="1" value="4" />
-        </label>
-        <label class="setting-row">
-            <span>Max FPS <span id="fps-value">30</span></span>
-            <input type="range" id="range-fps" min="15" max="60" step="5" value="30" />
-        </label>
     </div>
 
     <script src="icons.js"></script>

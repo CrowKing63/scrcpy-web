@@ -5,6 +5,25 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-03
+
+### Changed
+- **Web UI Redesign:** Replaced floating control bar with persistent 3-column layout
+  - Left sidebar: live streaming stats (FPS, latency, connection status) and stream settings
+    (resolution, bitrate, max FPS)
+  - Center: video player
+  - Right sidebar: customizable keypad with add/edit/delete buttons via modal
+- Sidebars are collapsible with state persisted to localStorage
+- Keypad buttons stored in localStorage with 8 default buttons (back, home, recents, vol+, vol-, power, scroll↑, scroll↓)
+- Edit mode: long-press button (600ms) or click pencil icon to enter; overlay controls for edit/delete per button
+- Support for custom button actions: navigation, scroll, keyboard (by Android keycode), text input
+- Responsive design: sidebars hide on mobile (< 768px) for touch-friendly portrait mode
+- Vision Pro Safari tablet landscape: full 3-column layout with optimal use of horizontal space
+
+### Removed
+- Bottom auto-hide navigation bar (control bar)
+- Right-side slide-in settings panel (moved to left sidebar)
+
 ## [0.3.1] - 2026-04-03
 
 ### Fixed
