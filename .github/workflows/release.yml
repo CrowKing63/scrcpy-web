@@ -66,9 +66,10 @@ jobs:
           cp /tmp/adb-win/platform-tools/AdbWinApi.dll "$BUNDLE_DIR/adb/" 2>/dev/null || true
           cp /tmp/adb-win/platform-tools/AdbWinUsbApi.dll "$BUNDLE_DIR/adb/" 2>/dev/null || true
 
-          # Copy APK and installer script
+          # Copy APK and installer scripts
           cp "$APK" "$BUNDLE_DIR/"
           cp installer/install.bat "$BUNDLE_DIR/"
+          cp installer/install.ps1 "$BUNDLE_DIR/"
 
           # Create zip
           cd "$BUNDLE_DIR"
