@@ -5,6 +5,16 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-03
+
+### Fixed
+- Crash on server start (Android 14+): foreground service now starts with `dataSync` type from the
+  button click and upgrades to `mediaProjection` type only from within the MediaProjection
+  activity-result callback, satisfying the Android 14 restriction
+- Crash on screen capture permission grant (Android 14+): `startForegroundService()` is now called
+  from inside the `ActivityResultCallback` so `getMediaProjection()` executes in the required context
+- Replaced deprecated `WindowManager.defaultDisplay.getRealMetrics()` with `DisplayManager` API
+
 ## [0.1.0] - 2026-04-02
 
 ### Added

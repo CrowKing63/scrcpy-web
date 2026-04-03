@@ -7,12 +7,13 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.wifi.WifiManager
+import android.content.pm.ServiceInfo
+import android.hardware.display.DisplayManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.util.DisplayMetrics
-import android.view.WindowManager
+import android.view.Display
 import androidx.core.app.NotificationCompat
 import com.scrcpyweb.capture.FMP4Muxer
 import com.scrcpyweb.capture.ScreenCapture
@@ -63,11 +64,37 @@ class MirrorService : Service() {
         super.onCreate()
         instance = this
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification(getWifiIpAddress()))
+        // Start foreground with DATA_SYNC type — safe to call from any context.
+        // The mediaProjection type is added later in onStartCommand when capture is requested.
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification(getWifiIpAddress()),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
         startWebServer()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_START_CAPTURE) {
+            val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+            val projectionData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(EXTRA_PROJECTION_DATA)
+            }
+            if (resultCode != 0 && projectionData != null) {
+                // Upgrade the foreground type to include mediaProjection.
+                // This call is valid because startForegroundService() was invoked from
+                // within the MediaProjection activity-result callback (Android 14+ requirement).
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(getWifiIpAddress()),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+                startCapture(resultCode, projectionData)
+            }
+        }
         return START_STICKY
     }
 
@@ -287,8 +314,10 @@ class MirrorService : Service() {
     }
 
     private fun getScreenMetrics(): DisplayMetrics {
-        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        return DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }
+        val dm = DisplayMetrics()
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.getRealMetrics(dm)
+        return dm
     }
 
     // ─────────────────────────────────────────────────────────
@@ -299,6 +328,15 @@ class MirrorService : Service() {
         /** Singleton reference to the running service, or null if not running. */
         @Volatile
         var instance: MirrorService? = null
+
+        /** Intent action to start screen capture from a MediaProjection result callback. */
+        const val ACTION_START_CAPTURE = "com.scrcpyweb.action.START_CAPTURE"
+
+        /** Intent extra key for the MediaProjection result code. */
+        const val EXTRA_RESULT_CODE = "extra_result_code"
+
+        /** Intent extra key for the MediaProjection result intent data. */
+        const val EXTRA_PROJECTION_DATA = "extra_projection_data"
 
         private const val CHANNEL_ID = "scrcpy_web_channel"
         private const val NOTIFICATION_ID = 1001

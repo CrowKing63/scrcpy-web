@@ -43,7 +43,16 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            MirrorService.instance?.startCapture(result.resultCode, result.data!!)
+            // On Android 14+, the foreground service with mediaProjection type must be
+            // started (via startForegroundService) from within the activity result callback.
+            // We pass the projection data via intent so MirrorService.onStartCommand() can
+            // call startForeground(MEDIA_PROJECTION) and getMediaProjection() in that context.
+            val intent = Intent(this, MirrorService::class.java).apply {
+                action = MirrorService.ACTION_START_CAPTURE
+                putExtra(MirrorService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(MirrorService.EXTRA_PROJECTION_DATA, result.data)
+            }
+            ContextCompat.startForegroundService(this, intent)
         }
     }
 
