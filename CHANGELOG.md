@@ -5,7 +5,7 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-04-03
+## [0.2.6] - 2026-04-03
 
 ### Fixed
 - Crash on server start (Android 14+): foreground service now starts with `dataSync` type from the
