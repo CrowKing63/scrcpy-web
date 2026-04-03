@@ -52,6 +52,20 @@ jobs:
             'platform-tools/adb.exe' \
             -d /tmp/adb-win/ 2>/dev/null || true
 
+      - name: Ensure install.ps1 has UTF-8 BOM (required by PowerShell 5.x)
+        run: |
+          python3 -c "
+path = 'installer/install.ps1'
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
+if not content.startswith('\ufeff'):
+    with open(path, 'w', encoding='utf-8-sig') as f:
+        f.write(content)
+    print('BOM added')
+else:
+    print('BOM already present')
+"
+
       - name: Bundle Windows installer
         run: |
           TAG="${{ github.ref_name }}"
