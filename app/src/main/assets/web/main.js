@@ -13,8 +13,10 @@ class ScrcpyWeb {
         this._sourceBuffer = null;
         this._segmentQueue = [];
         this._pendingInitData = null;
+        this._pendingSegments = [];
         this._frameCount = 0;
         this._fpsInterval = null;
+        this._liveEdgeTimer = null;
         this._reconnectDelay = 1000;
         this._hideBarTimer = null;
         this._pointers = new Map();
@@ -126,11 +128,22 @@ class ScrcpyWeb {
 
         if (type === 0x01) {
             // Init segment — add SourceBuffer and append
+            this._pendingSegments = [];
             this._addSourceBuffer(payload);
         } else if (type === 0x02) {
-            // Media segment
-            this._appendBuffer(payload);
             this._frameCount++;
+            if (!this._sourceBuffer) {
+                // SourceBuffer not ready yet — hold up to 120 frames
+                this._pendingSegments.push(payload);
+                if (this._pendingSegments.length > 120) this._pendingSegments.shift();
+                return;
+            }
+            // Flush any frames buffered before SourceBuffer was created
+            if (this._pendingSegments.length > 0) {
+                for (const seg of this._pendingSegments) this._segmentQueue.push(seg);
+                this._pendingSegments = [];
+            }
+            this._appendBuffer(payload);
         }
     }
 
@@ -219,11 +232,18 @@ class ScrcpyWeb {
         if (!this._sourceBuffer || this._sourceBuffer.updating) return;
         const buffered = this._sourceBuffer.buffered;
         if (buffered.length === 0) return;
-        const behind = video.currentTime - 2;
-        if (buffered.start(0) < behind) {
+        const bufEnd = buffered.end(buffered.length - 1);
+        // Trim everything more than 2 s behind the live edge (not currentTime,
+        // which can be 0 before first play and would never trigger trimming).
+        const trimTo = bufEnd - 2;
+        if (trimTo > buffered.start(0)) {
             try {
-                this._sourceBuffer.remove(0, behind);
+                this._sourceBuffer.remove(0, trimTo);
             } catch (_) { /* ignore */ }
+        }
+        // If playback has fallen more than 1 s behind the live edge, jump ahead.
+        if (bufEnd - video.currentTime > 1.5) {
+            video.currentTime = bufEnd - 0.1;
         }
     }
 
@@ -232,6 +252,7 @@ class ScrcpyWeb {
         this._sourceBuffer = null;
         this._segmentQueue = [];
         this._pendingInitData = null;
+        this._pendingSegments = [];
         if (this._mediaSource) {
             try { this._mediaSource.endOfStream(); } catch (_) { /* ignore */ }
             this._mediaSource = null;

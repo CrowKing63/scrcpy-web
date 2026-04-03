@@ -5,6 +5,18 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-03
+
+### Fixed
+- Media frames arriving before SourceBuffer is created were silently dropped;
+  up to 120 frames are now held in `_pendingSegments` and flushed the moment
+  the SourceBuffer becomes available, so the first I-frame is never lost
+- `_trimBuffer` was anchored to `video.currentTime` which is 0 before playback
+  starts, so trimming never fired → buffer grew unboundedly → `QuotaExceededError`
+  killed the SourceBuffer; trimming is now anchored to the live-edge (`bufEnd`)
+- Added live-edge catch-up: if playback falls more than 1.5 s behind the live
+  edge (e.g. after a buffer stall), `currentTime` is snapped to `bufEnd - 0.1 s`
+
 ## [0.2.9] - 2026-04-03
 
 ### Fixed
