@@ -46,7 +46,8 @@ $Strings = @{
         S5Title      = "Install SCRCPY-Web"
         Installing   = "Installing APK, please wait..."
         InstallOK    = "Installation complete! SCRCPY-Web is now on your phone."
-        InstallFail  = "Installation failed. Try running this file as Administrator."
+        InstallSigFix = "Signature mismatch detected. Removing previous version and retrying..."
+        InstallFail  = "Installation failed. See error detail above."
         DoneTitle    = "Setup Complete!"
         Done1        = "SCRCPY-Web is installed."
         Done2        = "Open the app on your phone and follow the on-screen prompts."
@@ -93,7 +94,8 @@ $Strings = @{
         S5Title      = "SCRCPY-Web 설치"
         Installing   = "APK 설치 중, 잠시 기다려주세요..."
         InstallOK    = "설치 완료! SCRCPY-Web이 폰에 설치되었습니다."
-        InstallFail  = "설치 실패. 이 파일을 관리자 권한으로 실행해 보세요."
+        InstallSigFix = "서명 불일치 감지. 이전 버전을 제거하고 재설치합니다..."
+        InstallFail  = "설치 실패. 위 오류 내용을 확인하세요."
         DoneTitle    = "설치 완료!"
         Done1        = "SCRCPY-Web이 설치되었습니다."
         Done2        = "폰에서 앱을 열고 화면의 안내를 따르세요."
@@ -140,7 +142,8 @@ $Strings = @{
         S5Title      = "SCRCPY-Webのインストール"
         Installing   = "APKをインストール中、しばらくお待ちください..."
         InstallOK    = "インストール完了！SCRCPY-WebがAndroidスマホにインストールされました。"
-        InstallFail  = "インストール失敗。管理者として実行してみてください。"
+        InstallSigFix = "署名の不一致を検出。以前のバージョンを削除して再インストールします..."
+        InstallFail  = "インストール失敗。上記のエラーを確認してください。"
         DoneTitle    = "セットアップ完了！"
         Done1        = "SCRCPY-Webがインストールされました。"
         Done2        = "スマホでアプリを開き、画面の指示に従ってください。"
@@ -187,7 +190,8 @@ $Strings = @{
         S5Title      = "安装SCRCPY-Web"
         Installing   = "正在安装APK，请稍候..."
         InstallOK    = "安装完成！SCRCPY-Web已安装到您的手机。"
-        InstallFail  = "安装失败。请尝试以管理员身份运行此文件。"
+        InstallSigFix = "检测到签名不匹配，正在删除旧版本并重新安装..."
+        InstallFail  = "安装失败。请查看上方错误信息。"
         DoneTitle    = "设置完成！"
         Done1        = "SCRCPY-Web已安装。"
         Done2        = "在手机上打开应用并按照屏幕提示操作。"
@@ -234,7 +238,8 @@ $Strings = @{
         S5Title      = "Instalar SCRCPY-Web"
         Installing   = "Instalando APK, espere unos segundos..."
         InstallOK    = "Instalacion completa! SCRCPY-Web ya esta en su telefono."
-        InstallFail  = "Error en la instalacion. Intente ejecutar este archivo como Administrador."
+        InstallSigFix = "Conflicto de firma detectado. Eliminando version anterior y reintentando..."
+        InstallFail  = "Error en la instalacion. Vea el detalle de error arriba."
         DoneTitle    = "Configuracion Completa!"
         Done1        = "SCRCPY-Web ha sido instalado."
         Done2        = "Abra la app en su telefono y siga las instrucciones en pantalla."
@@ -414,18 +419,38 @@ while ($true) {
     Show-Header 5 5 $s.S5Title
     Write-Host "  $($s.Installing)" -ForegroundColor Yellow
     Write-Host ""
-    $rc = Run-Adb @("install", "-r", $ApkPath)
+
+    $output = & $AdbPath install -r $ApkPath 2>&1
+    $rc = $LASTEXITCODE
+    $outputStr = $output -join "`n"
+    Write-Host ($output | ForEach-Object { "  $_" })
+
     if ($rc -eq 0) {
         Write-Host ""
         Write-Host "  $($s.InstallOK)" -ForegroundColor Green
         break
-    } else {
-        Write-Host ""
-        Write-Host "  $($s.InstallFail)" -ForegroundColor Red
-        Write-Host ""
-        $retry = (Read-Host "  $($s.Retry)").Trim().ToUpper()
-        if ($retry -ne "Y") { break }
     }
+
+    # Signature mismatch: uninstall old version and retry once
+    if ($outputStr -match "INSTALL_FAILED_UPDATE_INCOMPATIBLE") {
+        Write-Host ""
+        Write-Host "  $($s.InstallSigFix)" -ForegroundColor Yellow
+        & $AdbPath uninstall "com.scrcpyweb" | Out-Null
+        $output2 = & $AdbPath install $ApkPath 2>&1
+        $rc2 = $LASTEXITCODE
+        Write-Host ($output2 | ForEach-Object { "  $_" })
+        if ($rc2 -eq 0) {
+            Write-Host ""
+            Write-Host "  $($s.InstallOK)" -ForegroundColor Green
+            break
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  $($s.InstallFail)" -ForegroundColor Red
+    Write-Host ""
+    $retry = (Read-Host "  $($s.Retry)").Trim().ToUpper()
+    if ($retry -ne "Y") { break }
 }
 
 # Done
