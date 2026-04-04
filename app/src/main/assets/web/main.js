@@ -394,6 +394,7 @@ class ScrcpyWeb {
         this._pendingInitData = null;
         this._pendingSegments = [];
         this._waitingForKeyframe = true;
+        this._keyframeGateTimer = null;
         this._frameCount = 0;
         this._fpsInterval = null;
         this._liveEdgeTimer = null;
@@ -513,9 +514,15 @@ class ScrcpyWeb {
         const payload = buffer.slice(5);
 
         if (type === 0x01) {
-            // Init segment — reset keyframe gate and add SourceBuffer
+            // Init segment — reset keyframe gate with a safety timeout so
+            // streaming is never blocked if the encoder does not set the
+            // KEY_FRAME flag (some devices omit it).
             this._pendingSegments = [];
             this._waitingForKeyframe = true;
+            clearTimeout(this._keyframeGateTimer);
+            this._keyframeGateTimer = setTimeout(() => {
+                this._waitingForKeyframe = false;
+            }, 500);
             this._addSourceBuffer(payload);
         } else if (type === 0x02 || type === 0x03) {
             // 0x02 = P-frame, 0x03 = keyframe
@@ -527,6 +534,7 @@ class ScrcpyWeb {
             if (this._waitingForKeyframe) {
                 if (!isKeyFrame) return;
                 this._waitingForKeyframe = false;
+                clearTimeout(this._keyframeGateTimer);
             }
 
             if (!this._sourceBuffer) {
@@ -690,6 +698,8 @@ class ScrcpyWeb {
         this._pendingSegments = [];
         clearTimeout(this._flushTimer);
         this._flushTimer = null;
+        clearTimeout(this._keyframeGateTimer);
+        this._keyframeGateTimer = null;
         if (this._mediaSource) {
             try { this._mediaSource.endOfStream(); } catch (_) { /* ignore */ }
             this._mediaSource = null;

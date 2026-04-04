@@ -32,6 +32,8 @@ class VideoEncoder(
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
     private var keyframeRunnable: Runnable? = null
+    private var lastSps: ByteArray? = null
+    private var lastPps: ByteArray? = null
 
     /** Invoked on each encoded frame with the raw ByteBuffer and its metadata. */
     var onEncodedFrame: ((ByteBuffer, MediaCodec.BufferInfo) -> Unit)? = null
@@ -176,6 +178,13 @@ class VideoEncoder(
         // Strip Annex B start codes for SPS and PPS
         val sps = data.copyOfRange(4, secondStart)
         val pps = data.copyOfRange(secondStart + 4, data.size)
+
+        // Some encoders re-emit codec config after a sync frame request.
+        // Only notify when SPS/PPS actually changes to avoid unnecessary
+        // init segment broadcasts that disrupt active clients.
+        if (sps.contentEquals(lastSps) && pps.contentEquals(lastPps)) return
+        lastSps = sps
+        lastPps = pps
         onSpsAvailable?.invoke(sps, pps)
     }
 }

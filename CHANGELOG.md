@@ -5,6 +5,17 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-04
+
+### Fixed
+- **Streaming freeze regression from v1.1.0:** Keyframe gating was too aggressive — some Android
+  encoders re-emit `BUFFER_FLAG_CODEC_CONFIG` after a sync frame request, causing repeated init
+  segment broadcasts that kept resetting the keyframe gate. Now `VideoEncoder` deduplicates SPS/PPS
+  with `contentEquals()` so `onSpsAvailable` only fires when parameters actually change.
+- **Keyframe gate safety timeout:** Added a 500 ms fallback timer that automatically lifts the
+  keyframe gate if no type-0x03 frame arrives. Ensures streaming works even on devices whose
+  encoders do not set `BUFFER_FLAG_KEY_FRAME` on IDR frames.
+
 ## [1.1.0] - 2026-04-04
 
 ### Fixed
