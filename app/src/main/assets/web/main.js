@@ -393,8 +393,6 @@ class ScrcpyWeb {
         this._segmentQueue = [];
         this._pendingInitData = null;
         this._pendingSegments = [];
-        this._waitingForKeyframe = true;
-        this._keyframeGateTimer = null;
         this._frameCount = 0;
         this._fpsInterval = null;
         this._liveEdgeTimer = null;
@@ -404,6 +402,16 @@ class ScrcpyWeb {
         this._pauseHandler = () => {
             if (this._sourceBuffer && this._mediaSource?.readyState === 'open') {
                 document.getElementById('video-player').play().catch(() => {});
+            }
+        };
+        this._waitingHandler = () => {
+            // Video stalled waiting for data — seek to the latest available
+            // frame so playback resumes from the live edge immediately.
+            const vid = document.getElementById('video-player');
+            if (!this._sourceBuffer) return;
+            const buf = this._sourceBuffer.buffered;
+            if (buf.length > 0) {
+                vid.currentTime = buf.end(buf.length - 1) - 0.1;
             }
         };
         this._pointers = new Map();
@@ -504,10 +512,12 @@ class ScrcpyWeb {
         });
 
         // Resume playback if the live stream temporarily stalls.
-        // Use a stable reference so the listener does not accumulate
+        // Use stable references so listeners do not accumulate
         // across multiple _initMSEPlayer() calls.
         video.removeEventListener('pause', this._pauseHandler);
         video.addEventListener('pause', this._pauseHandler);
+        video.removeEventListener('waiting', this._waitingHandler);
+        video.addEventListener('waiting', this._waitingHandler);
 
         this._startFpsCounter();
     }
@@ -525,28 +535,15 @@ class ScrcpyWeb {
         const payload = buffer.slice(5);
 
         if (type === 0x01) {
-            // Init segment — reset keyframe gate with a safety timeout so
-            // streaming is never blocked if the encoder does not set the
-            // KEY_FRAME flag (some devices omit it).
+            // Init segment — create or reuse SourceBuffer.
             this._pendingSegments = [];
-            this._waitingForKeyframe = true;
-            clearTimeout(this._keyframeGateTimer);
-            this._keyframeGateTimer = setTimeout(() => {
-                this._waitingForKeyframe = false;
-            }, 500);
             this._addSourceBuffer(payload);
         } else if (type === 0x02 || type === 0x03) {
-            // 0x02 = P-frame, 0x03 = keyframe
+            // 0x02 = P-frame, 0x03 = keyframe.
+            // Both are forwarded to the SourceBuffer as-is; the browser's
+            // H264 decoder silently discards P-frames that arrive before the
+            // first IDR, so JS-level keyframe gating is unnecessary.
             this._frameCount++;
-            const isKeyFrame = (type === 0x03);
-
-            // Drop P-frames until the first keyframe arrives so the decoder
-            // never receives non-decodable frames after (re)connection.
-            if (this._waitingForKeyframe) {
-                if (!isKeyFrame) return;
-                this._waitingForKeyframe = false;
-                clearTimeout(this._keyframeGateTimer);
-            }
 
             if (!this._sourceBuffer) {
                 // SourceBuffer not ready yet — hold up to 120 frames
@@ -667,9 +664,10 @@ class ScrcpyWeb {
     /**
      * Trims old buffered data and keeps playback near the live edge.
      *
-     * Removes data more than 3 seconds behind the live edge to prevent
-     * unbounded memory growth.  When playback falls more than 2 seconds
-     * behind the live edge, seeks forward to 0.3 seconds behind it.
+     * Removes data more than 2 seconds behind the live edge to prevent
+     * unbounded memory growth.  When playback falls more than 1 second
+     * behind the live edge, seeks to 0.1 seconds behind it so the
+     * displayed frame is always near-real-time.
      */
     _trimBuffer() {
         const video = document.getElementById('video-player');
@@ -678,8 +676,8 @@ class ScrcpyWeb {
         if (buffered.length === 0) return;
         const bufEnd = buffered.end(buffered.length - 1);
 
-        // Trim everything more than 3 s behind the live edge.
-        const trimTo = bufEnd - 3;
+        // Trim everything more than 2 s behind the live edge.
+        const trimTo = bufEnd - 2;
         if (trimTo > buffered.start(0)) {
             try {
                 this._sourceBuffer.remove(0, trimTo);
@@ -687,9 +685,9 @@ class ScrcpyWeb {
             return; // remove() triggers another updateend
         }
 
-        // If playback has fallen more than 2 s behind the live edge, seek.
-        if (bufEnd - video.currentTime > 2) {
-            video.currentTime = bufEnd - 0.3;
+        // Keep playback at the live edge — seek when >1 s behind.
+        if (bufEnd - video.currentTime > 1) {
+            video.currentTime = bufEnd - 0.1;
         }
     }
 
@@ -701,8 +699,6 @@ class ScrcpyWeb {
         this._pendingSegments = [];
         clearTimeout(this._flushTimer);
         this._flushTimer = null;
-        clearTimeout(this._keyframeGateTimer);
-        this._keyframeGateTimer = null;
         if (this._mediaSource) {
             try { this._mediaSource.endOfStream(); } catch (_) { /* ignore */ }
             this._mediaSource = null;

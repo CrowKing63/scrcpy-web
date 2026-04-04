@@ -5,6 +5,21 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-04-04
+
+### Fixed
+- **Unnecessary P-frame filtering:** Removed JS-level keyframe gating (`_waitingForKeyframe` flag
+  and timeout). The browser's H264 decoder naturally discards P-frames that arrive before the
+  first IDR, so the application-level gate was redundant and sometimes dropped valid frames.
+- **Video stall without recovery:** Added `waiting` event handler (`_waitingHandler`) that
+  automatically seeks to the latest buffered position (0.1s before live edge) when playback
+  stalls. This resumes streaming immediately without requiring user intervention.
+- **Pause listener accumulation:** Fixed `_initMSEPlayer()` to call `removeEventListener` before
+  `addEventListener` for `pause` and `waiting` events, preventing duplicate handlers from
+  accumulating across MSE reinitializations.
+- **Blob URL memory leaks:** Now explicitly revoke the previous blob URL with `URL.revokeObjectURL()`
+  before creating a new MediaSource attachment, preventing orphaned blob URLs from consuming memory.
+
 ## [1.3.0] - 2026-04-04
 
 ### Fixed
