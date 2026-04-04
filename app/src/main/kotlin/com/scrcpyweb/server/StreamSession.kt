@@ -28,10 +28,6 @@ class StreamSession {
     @Volatile
     var initSegment: ByteArray? = null
 
-    /** The most recent keyframe packet (header + payload), sent to new clients immediately. */
-    @Volatile
-    private var lastKeyframePacket: ByteArray? = null
-
     /** Called when a new client connects so the caller can request an IDR frame. */
     var onClientConnected: (() -> Unit)? = null
 
@@ -66,11 +62,8 @@ class StreamSession {
             frameChannel.trySend(header + init)
         }
 
-        // Enqueue the most recent keyframe so the client can decode immediately
-        // without waiting for the next IDR from the encoder.
-        lastKeyframePacket?.let { kf -> frameChannel.trySend(kf) }
-
-        // Request a fresh IDR from the encoder for this newly connected client.
+        // Request a fresh IDR from the encoder so this client receives a
+        // decodable keyframe as soon as possible (~33 ms at 30 fps).
         onClientConnected?.invoke()
 
         try {
@@ -122,7 +115,6 @@ class StreamSession {
         val type = if (isKeyFrame) 0x03 else 0x02
         val header = buildHeader(type, frameData.size)
         val packet = header + frameData
-        if (isKeyFrame) lastKeyframePacket = packet
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 

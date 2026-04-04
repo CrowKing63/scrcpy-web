@@ -5,6 +5,24 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-04
+
+### Fixed
+- **Reconnection stability regression from v1.2.0:** The cached keyframe packet (`lastKeyframePacket`)
+  contained stale fMP4 data with old sequence numbers and timestamps. When sent to newly reconnecting
+  clients after the init segment, the timestamp discontinuity confused the MSE decoder, especially
+  on Safari, causing black screens or stuttering. The cached keyframe mechanism has been removed;
+  the fresh IDR from `requestKeyframe()` arrives within ~50 ms and provides correct sequence numbers.
+- **MSE pipeline reset side effects:** Fix 3 (v1.2.0) was too aggressive — it called `_teardownMSE()`
+  + `_initMSEPlayer()` on every new init segment, accumulating `pause` event listeners on the video
+  element and leaking blob URLs. Reverted to simpler approach: append new init segments to the
+  existing SourceBuffer. SPS/PPS deduplication in `VideoEncoder` ensures init segments only occur
+  when codec parameters actually change (e.g., rotation).
+- **Live-edge tracking stuttering:** Removed `playbackRate = 1.1` acceleration logic (caused stuttering
+  in some browsers). Now uses simple threshold-based seeking: buffer kept at 3s behind live edge;
+  hard seek to 0.3s behind edge only when playback falls >2s behind. Eliminates visible playback
+  jumps and rate changes.
+
 ## [1.2.0] - 2026-04-04
 
 ### Fixed

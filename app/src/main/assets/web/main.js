@@ -400,6 +400,12 @@ class ScrcpyWeb {
         this._liveEdgeTimer = null;
         this._reconnectDelay = 1000;
         this._flushTimer = null;
+        this._objectURL = null;
+        this._pauseHandler = () => {
+            if (this._sourceBuffer && this._mediaSource?.readyState === 'open') {
+                document.getElementById('video-player').play().catch(() => {});
+            }
+        };
         this._pointers = new Map();
 
         this._initIcons();
@@ -480,7 +486,13 @@ class ScrcpyWeb {
         this._pendingInitData = null;
         this._mediaSource = new MediaSource();
         const video = document.getElementById('video-player');
-        video.src = URL.createObjectURL(this._mediaSource);
+
+        // Revoke the previous blob URL to avoid memory leaks.
+        if (this._objectURL) {
+            URL.revokeObjectURL(this._objectURL);
+        }
+        this._objectURL = URL.createObjectURL(this._mediaSource);
+        video.src = this._objectURL;
 
         this._mediaSource.addEventListener('sourceopen', () => {
             // If an init segment arrived before sourceopen fired, apply it now.
@@ -492,11 +504,10 @@ class ScrcpyWeb {
         });
 
         // Resume playback if the live stream temporarily stalls.
-        video.addEventListener('pause', () => {
-            if (this._sourceBuffer && this._mediaSource?.readyState === 'open') {
-                video.play().catch(() => {});
-            }
-        });
+        // Use a stable reference so the listener does not accumulate
+        // across multiple _initMSEPlayer() calls.
+        video.removeEventListener('pause', this._pauseHandler);
+        video.addEventListener('pause', this._pauseHandler);
 
         this._startFpsCounter();
     }
@@ -565,12 +576,11 @@ class ScrcpyWeb {
             return;
         }
         if (this._sourceBuffer) {
-            // Pipeline restarted (e.g., rotation or encoder restart).
-            // Tear down MSE completely and rebuild to avoid Safari decoder
-            // state issues when codec parameters change.
-            this._teardownMSE();
-            this._initMSEPlayer();
-            this._pendingInitData = initData;
+            // Pipeline restarted (e.g., rotation) — append new init segment
+            // to the existing SourceBuffer.  SPS/PPS deduplication in
+            // VideoEncoder ensures this only happens when codec parameters
+            // actually change.
+            this._appendBuffer(initData);
             return;
         }
 
@@ -657,8 +667,9 @@ class ScrcpyWeb {
     /**
      * Trims old buffered data and keeps playback near the live edge.
      *
-     * Uses graduated catch-up: gentle playback-rate acceleration for moderate
-     * lag, hard seek only when severely behind, to avoid visible jumps.
+     * Removes data more than 3 seconds behind the live edge to prevent
+     * unbounded memory growth.  When playback falls more than 2 seconds
+     * behind the live edge, seeks forward to 0.3 seconds behind it.
      */
     _trimBuffer() {
         const video = document.getElementById('video-player');
@@ -667,26 +678,18 @@ class ScrcpyWeb {
         if (buffered.length === 0) return;
         const bufEnd = buffered.end(buffered.length - 1);
 
-        // Trim everything more than 4 s behind the live edge.
-        const trimTo = bufEnd - 4;
+        // Trim everything more than 3 s behind the live edge.
+        const trimTo = bufEnd - 3;
         if (trimTo > buffered.start(0)) {
             try {
                 this._sourceBuffer.remove(0, trimTo);
             } catch (_) { /* ignore */ }
-            return; // remove() triggers another updateend — check playback then
+            return; // remove() triggers another updateend
         }
 
-        // Graduated live-edge tracking
-        const lag = bufEnd - video.currentTime;
-        if (lag > 2.5) {
-            // Severely behind — hard seek to 0.5 s before live edge
-            video.currentTime = bufEnd - 0.5;
-            video.playbackRate = 1.0;
-        } else if (lag > 1.0) {
-            // Moderately behind — accelerate gently to catch up
-            video.playbackRate = 1.1;
-        } else {
-            video.playbackRate = 1.0;
+        // If playback has fallen more than 2 s behind the live edge, seek.
+        if (bufEnd - video.currentTime > 2) {
+            video.currentTime = bufEnd - 0.3;
         }
     }
 
@@ -703,6 +706,10 @@ class ScrcpyWeb {
         if (this._mediaSource) {
             try { this._mediaSource.endOfStream(); } catch (_) { /* ignore */ }
             this._mediaSource = null;
+        }
+        if (this._objectURL) {
+            URL.revokeObjectURL(this._objectURL);
+            this._objectURL = null;
         }
         clearInterval(this._fpsInterval);
     }
