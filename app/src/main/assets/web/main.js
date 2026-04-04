@@ -393,6 +393,7 @@ class ScrcpyWeb {
         this._segmentQueue = [];
         this._pendingInitData = null;
         this._pendingSegments = [];
+        this._waitingForKeyframe = true;
         this._frameCount = 0;
         this._fpsInterval = null;
         this._liveEdgeTimer = null;
@@ -501,7 +502,8 @@ class ScrcpyWeb {
 
     /**
      * Handles a binary WebSocket message.
-     * Byte 0 is the message type; bytes 1–4 are the payload length (uint32 BE).
+     * Byte 0 is the message type (0x01 init, 0x02 P-frame, 0x03 keyframe);
+     * bytes 1–4 are the payload length (uint32 BE).
      *
      * @param {ArrayBuffer} buffer Raw message bytes.
      */
@@ -511,11 +513,22 @@ class ScrcpyWeb {
         const payload = buffer.slice(5);
 
         if (type === 0x01) {
-            // Init segment — add SourceBuffer and append
+            // Init segment — reset keyframe gate and add SourceBuffer
             this._pendingSegments = [];
+            this._waitingForKeyframe = true;
             this._addSourceBuffer(payload);
-        } else if (type === 0x02) {
+        } else if (type === 0x02 || type === 0x03) {
+            // 0x02 = P-frame, 0x03 = keyframe
             this._frameCount++;
+            const isKeyFrame = (type === 0x03);
+
+            // Drop P-frames until the first keyframe arrives so the decoder
+            // never receives non-decodable frames after (re)connection.
+            if (this._waitingForKeyframe) {
+                if (!isKeyFrame) return;
+                this._waitingForKeyframe = false;
+            }
+
             if (!this._sourceBuffer) {
                 // SourceBuffer not ready yet — hold up to 120 frames
                 this._pendingSegments.push(payload);
@@ -544,8 +557,12 @@ class ScrcpyWeb {
             return;
         }
         if (this._sourceBuffer) {
-            // Pipeline restarted — append new init segment to existing SourceBuffer.
-            this._appendBuffer(initData);
+            // Pipeline restarted (e.g., rotation or encoder restart).
+            // Tear down MSE completely and rebuild to avoid Safari decoder
+            // state issues when codec parameters change.
+            this._teardownMSE();
+            this._initMSEPlayer();
+            this._pendingInitData = initData;
             return;
         }
 
@@ -630,8 +647,10 @@ class ScrcpyWeb {
     }
 
     /**
-     * Removes buffered video data more than 2 seconds behind the current
-     * playback position to prevent unbounded memory growth.
+     * Trims old buffered data and keeps playback near the live edge.
+     *
+     * Uses graduated catch-up: gentle playback-rate acceleration for moderate
+     * lag, hard seek only when severely behind, to avoid visible jumps.
      */
     _trimBuffer() {
         const video = document.getElementById('video-player');
@@ -639,17 +658,27 @@ class ScrcpyWeb {
         const buffered = this._sourceBuffer.buffered;
         if (buffered.length === 0) return;
         const bufEnd = buffered.end(buffered.length - 1);
-        // Trim everything more than 2 s behind the live edge (not currentTime,
-        // which can be 0 before first play and would never trigger trimming).
-        const trimTo = bufEnd - 2;
+
+        // Trim everything more than 4 s behind the live edge.
+        const trimTo = bufEnd - 4;
         if (trimTo > buffered.start(0)) {
             try {
                 this._sourceBuffer.remove(0, trimTo);
             } catch (_) { /* ignore */ }
+            return; // remove() triggers another updateend — check playback then
         }
-        // If playback has fallen more than 1 s behind the live edge, jump ahead.
-        if (bufEnd - video.currentTime > 1.5) {
-            video.currentTime = bufEnd - 0.1;
+
+        // Graduated live-edge tracking
+        const lag = bufEnd - video.currentTime;
+        if (lag > 2.5) {
+            // Severely behind — hard seek to 0.5 s before live edge
+            video.currentTime = bufEnd - 0.5;
+            video.playbackRate = 1.0;
+        } else if (lag > 1.0) {
+            // Moderately behind — accelerate gently to catch up
+            video.playbackRate = 1.1;
+        } else {
+            video.playbackRate = 1.0;
         }
     }
 

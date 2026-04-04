@@ -117,6 +117,20 @@ class VideoEncoder(
     }
 
     /**
+     * Requests an immediate IDR (sync) frame from the encoder.
+     * Called when a new WebSocket client connects so it can start decoding
+     * without waiting for the next periodic keyframe.
+     * Safe to call from any thread.
+     */
+    fun requestKeyframe() {
+        try {
+            codec?.setParameters(Bundle().apply {
+                putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+            })
+        } catch (_: Exception) { /* codec may have been released */ }
+    }
+
+    /**
      * Stops encoding and releases all MediaCodec resources.
      */
     fun stop() {

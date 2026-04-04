@@ -5,6 +5,25 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-04
+
+### Fixed
+- **Black screen on reconnection:** When Safari is closed and reopened, the WebSocket now reconnects
+  with immediate video display instead of a blank black screen. Server now caches the most recent
+  keyframe and sends it to every new client immediately, and the encoder requests an IDR frame
+  on-demand when a client connects (no longer relies solely on 2-second periodic IDR requests).
+- **Keyframe gating on client:** Media segments arriving before the first keyframe are now discarded
+  so the MSE decoder never receives non-decodable P-frames after reconnection or pipeline restart.
+  New message type `0x03` distinguishes keyframes (`0x02` is P-frame) for client-side filtering.
+- **MSE pipeline reset on new init segment:** When the encoder restarts (e.g., rotation), the client
+  now tears down and rebuilds the entire MediaSource and SourceBuffer instead of appending the new
+  init segment to the existing SourceBuffer. This prevents Safari decoder state confusion and ensures
+  clean playback across pipeline restarts.
+- **Stuttering and frame jumps:** Live-edge tracking (`_trimBuffer`) now uses graduated catch-up:
+  playback-rate acceleration (1.1x) for moderate lag (1–2.5s behind) instead of hard seeks,
+  and only hard-seeks when severely behind (>2.5s). This eliminates visible jumps during
+  normal streaming. Buffer trim window increased from 2s to 4s for better stability.
+
 ## [0.4.0] - 2026-04-03
 
 ### Changed

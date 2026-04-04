@@ -156,11 +156,15 @@ class MirrorService : Service() {
                     buffer.get(frameData)
                     val isKeyFrame = (info.flags and android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
                     val segment = muxer.muxFrame(frameData, isKeyFrame, info.presentationTimeUs, info.presentationTimeUs)
-                    webServer?.streamSession?.sendFrameToAll(segment)
+                    webServer?.streamSession?.sendFrameToAll(segment, isKeyFrame)
                 }
             }
 
             encoder.start()
+
+            webServer?.streamSession?.onClientConnected = {
+                encoder.requestKeyframe()
+            }
 
             screenCapture = ScreenCapture(this).also { capture ->
                 capture.onStopped = {

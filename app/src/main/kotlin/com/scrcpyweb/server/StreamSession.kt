@@ -28,6 +28,13 @@ class StreamSession {
     @Volatile
     var initSegment: ByteArray? = null
 
+    /** The most recent keyframe packet (header + payload), sent to new clients immediately. */
+    @Volatile
+    private var lastKeyframePacket: ByteArray? = null
+
+    /** Called when a new client connects so the caller can request an IDR frame. */
+    var onClientConnected: (() -> Unit)? = null
+
     /** Frame queue: a channel-based approach is used inside each session coroutine. */
     private val frameListeners = ConcurrentHashMap<String, (ByteArray) -> Unit>()
 
@@ -58,6 +65,13 @@ class StreamSession {
             val header = buildHeader(0x01, init.size)
             frameChannel.trySend(header + init)
         }
+
+        // Enqueue the most recent keyframe so the client can decode immediately
+        // without waiting for the next IDR from the encoder.
+        lastKeyframePacket?.let { kf -> frameChannel.trySend(kf) }
+
+        // Request a fresh IDR from the encoder for this newly connected client.
+        onClientConnected?.invoke()
 
         try {
             coroutineScope {
@@ -93,20 +107,22 @@ class StreamSession {
     }
 
     /**
-     * Broadcasts an fMP4 media segment to all connected clients.
-     * Should be called from the encoder callback thread.
-     *
-     * @param frameData Raw fMP4 segment bytes (moof + mdat).
-     */
-    /**
      * Broadcasts an fMP4 media segment to all connected clients via their
      * per-session channels, preserving ordering with init segments.
      *
-     * @param frameData Raw fMP4 segment bytes (moof + mdat).
+     * Keyframes are sent with type 0x03 so clients can distinguish them from
+     * P-frames (0x02) and gate playback until the first keyframe arrives.
+     * The most recent keyframe is also cached for immediate delivery to
+     * newly connecting clients.
+     *
+     * @param frameData  Raw fMP4 segment bytes (moof + mdat).
+     * @param isKeyFrame Whether this frame is an IDR (keyframe).
      */
-    fun sendFrameToAll(frameData: ByteArray) {
-        val header = buildHeader(0x02, frameData.size)
+    fun sendFrameToAll(frameData: ByteArray, isKeyFrame: Boolean = false) {
+        val type = if (isKeyFrame) 0x03 else 0x02
+        val header = buildHeader(type, frameData.size)
         val packet = header + frameData
+        if (isKeyFrame) lastKeyframePacket = packet
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 
@@ -194,7 +210,7 @@ class StreamSession {
      * Builds the 5-byte binary frame header used by the WebSocket protocol.
      *
      * Header layout:
-     *  - byte 0: message type (0x01 = init_segment, 0x02 = media_segment)
+     *  - byte 0: message type (0x01 = init_segment, 0x02 = media_segment, 0x03 = keyframe_segment)
      *  - bytes 1–4: data length as uint32 big-endian
      *
      * @param type       Message type byte.
