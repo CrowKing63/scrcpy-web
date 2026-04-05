@@ -123,11 +123,34 @@ class MirrorService : Service() {
         webServer = WebServer(port = 8080, assetManager = assets).also { server ->
             server.onDeviceInfoRequest = { getDeviceInfo() }
             server.onStartCapture = {
-                // MediaProjection requires an Activity to show the permission dialog.
-                // Return false here; the Activity will call startCapture() directly.
-                false
+                // Try to restart capture using the saved MediaProjection consent
+                // token.  This allows browser clients to resume mirroring after a
+                // screen-lock stop without the user having to re-grant permission
+                // on the phone.  The token may be invalidated by the OS, so we
+                // catch any failure and return false to signal the client.
+                val rc = savedProjectionResultCode
+                val pd = savedProjectionData
+                if (!isCapturing && rc != 0 && pd != null) {
+                    try {
+                        startCapture(rc, pd)
+                        true
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        false
+                    }
+                } else {
+                    false
+                }
             }
             server.onStopCapture = { stopCapture() }
+            server.streamSession.onRestartCapture = {
+                val rc = savedProjectionResultCode
+                val pd = savedProjectionData
+                if (!isCapturing && rc != 0 && pd != null) {
+                    try { startCapture(rc, pd); true }
+                    catch (e: Exception) { e.printStackTrace(); false }
+                } else false
+            }
             server.start()
         }
     }
@@ -143,7 +166,9 @@ class MirrorService : Service() {
      * @param data       MediaProjection permission result intent data.
      */
     fun startCapture(resultCode: Int, data: Intent) {
-        if (isCapturing) stopCapture()
+        // Always tear down the previous pipeline — even when isCapturing is false
+        // (e.g. after an onStopped callback that only partially cleaned up).
+        stopCapture()
         savedProjectionResultCode = resultCode
         savedProjectionData = data
 
@@ -151,9 +176,10 @@ class MirrorService : Service() {
         // This prevents the Ktor server and encoder threads from being suspended
         // if the display dims.  The screen itself is kept on by FLAG_KEEP_SCREEN_ON
         // set on MainActivity's window (see updateUiFromService).
+        // No timeout — the lock is explicitly released in stopCapture().
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
-            .also { it.acquire(MAX_WAKE_LOCK_MS) }
+            .also { it.acquire() }
 
         val metrics = getScreenMetrics()
         val scale = getPreferredScale()
@@ -184,20 +210,24 @@ class MirrorService : Service() {
 
             encoder.start()
 
-            webServer?.streamSession?.onClientConnected = {
+            webServer?.streamSession?.onClientConnected = { isFirstClient ->
+                // When the first client connects after a period with no viewers,
+                // reset the muxer sequence so the browser receives segments
+                // starting at sequence 1 right after the init segment.
+                if (isFirstClient) {
+                    fmp4Muxer?.resetSequence()
+                }
                 encoder.requestKeyframe()
             }
 
             screenCapture = ScreenCapture(this).also { capture ->
                 capture.onStopped = {
-                    isCapturing = false
-                    updateNotification()
-                    // Notify all connected browser clients that capture has stopped
-                    // (e.g. due to screen lock on Android 14+) so they can show
-                    // a "unlock your phone" overlay instead of a frozen/black screen.
-                    webServer?.streamSession?.broadcastCaptureState(false)
-                    wakeLock?.release()
-                    wakeLock = null
+                    // MediaProjection was revoked (e.g. screen lock on Android 14+).
+                    // Perform a full pipeline teardown so encoder/muxer do not
+                    // linger in a zombie state.  stopCapture() is safe to call
+                    // here because the projection is already stopped and its
+                    // fields were nulled by the ScreenCapture callback.
+                    stopCapture()
                 }
                 capture.start(resultCode, data, encoder.getInputSurface(), width, height, dpi)
             }
@@ -367,8 +397,6 @@ class MirrorService : Service() {
         private const val CHANNEL_ID     = "scrcpy_web_channel"
         private const val NOTIFICATION_ID = 1001
         private const val WAKE_LOCK_TAG   = "scrcpyweb:mirror"
-        /** Maximum wake-lock duration: 4 hours. The lock is always released in stopCapture. */
-        private const val MAX_WAKE_LOCK_MS = 4 * 60 * 60 * 1000L
     }
 }
 

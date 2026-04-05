@@ -67,6 +67,19 @@ class FMP4Muxer(
         return moof + mdat
     }
 
+    /**
+     * Resets the mfhd sequence number back to 1.
+     *
+     * Call this when all WebSocket clients have disconnected and a new client
+     * is about to connect, so the browser receives a contiguous sequence
+     * starting from 1 right after the init segment.  Some MSE implementations
+     * (notably Safari) may reject segments whose sequence numbers jump after
+     * a fresh init segment even in "sequence" SourceBuffer mode.
+     */
+    fun resetSequence() {
+        sequenceNumber = 1
+    }
+
     // ─────────────────────────────────────────────────────────
     //  Init segment builders
     // ─────────────────────────────────────────────────────────

@@ -1042,11 +1042,18 @@ class ScrcpyWeb {
         } catch (_) { /* server may not be ready yet */ }
     }
 
-    /** Sends a POST to /api/start-capture to trigger MediaProjection. */
+    /**
+     * Requests capture (re)start.  Prefers WebSocket when the connection is
+     * open so the server can reply inline; falls back to the REST endpoint.
+     */
     async _requestCapture() {
-        try {
-            await fetch('/api/start-capture', { method: 'POST' });
-        } catch (_) { /* ignore */ }
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            this._send({ type: 'restart_capture' });
+        } else {
+            try {
+                await fetch('/api/start-capture', { method: 'POST' });
+            } catch (_) { /* ignore */ }
+        }
     }
 
     // ── Numpad ────────────────────────────────────────────────────────────

@@ -37,8 +37,21 @@ class StreamSession {
     @Volatile
     private var lastKeyframe: ByteArray? = null
 
-    /** Called when a new client connects so the caller can request an IDR frame. */
-    var onClientConnected: (() -> Unit)? = null
+    /**
+     * Called when a new client connects so the caller can request an IDR frame.
+     *
+     * The boolean parameter is `true` when this is the first client (the session
+     * was previously empty), allowing the caller to reset muxer state so the
+     * browser receives a contiguous fMP4 sequence starting from 1.
+     */
+    var onClientConnected: ((isFirstClient: Boolean) -> Unit)? = null
+
+    /**
+     * Called when a browser client requests capture restart via WebSocket
+     * (`{"type":"restart_capture"}`).  Returns `true` if capture was
+     * successfully restarted using the saved MediaProjection token.
+     */
+    var onRestartCapture: (() -> Boolean)? = null
 
     /** Per-session frame channels for ordered binary delivery. */
     private val frameListeners = ConcurrentHashMap<String, (ByteArray) -> Unit>()
@@ -57,12 +70,18 @@ class StreamSession {
      */
     suspend fun handleSession(session: WebSocketSession) {
         val id = System.nanoTime().toString()
+        val isFirstClient = sessions.isEmpty()
         sessions[id] = session
 
         // Per-session channels carry payloads in insertion order so that
         // init segments (0x01) and media frames (0x02/0x03) are never reordered.
         val frameChannel  = Channel<ByteArray>(capacity = 64)
         val statusChannel = Channel<String>(capacity = 4)
+
+        // Notify the pipeline BEFORE enqueuing so the muxer sequence can be
+        // reset for the first client.  This ensures the segments that follow
+        // the init segment start at sequence 1.
+        onClientConnected?.invoke(isFirstClient)
 
         // Register listeners BEFORE enqueuing the init segment so that any
         // concurrent updateInitSegment() call also goes through the channel.
@@ -77,9 +96,6 @@ class StreamSession {
         // Send the cached last keyframe so the client can start rendering
         // immediately rather than waiting for the next periodic IDR.
         lastKeyframe?.let { kf -> frameChannel.trySend(kf) }
-
-        // Request a fresh IDR from the encoder (~one frame interval, ≈33 ms at 30 fps).
-        onClientConnected?.invoke()
 
         // Per-session pointer tracking: pointerId → (startX, startY, startTimeMs)
         val pointerStates = HashMap<Int, Triple<Float, Float, Long>>()
@@ -195,6 +211,10 @@ class StreamSession {
             val json = JSONObject(text)
             when (val type = json.optString("type")) {
                 "config" -> { /* no-op: config is applied via SharedPreferences in MirrorService */ }
+                "restart_capture" -> {
+                    val ok = onRestartCapture?.invoke() ?: false
+                    session.send(Frame.Text("""{"type":"restart_capture_result","success":$ok}"""))
+                }
                 "key" -> {
                     // Key injection via AccessibilityService (requires canRetrieveWindowContent).
                     // Silently ignored if the service is unavailable.

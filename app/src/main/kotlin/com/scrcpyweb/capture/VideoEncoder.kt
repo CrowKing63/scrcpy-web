@@ -80,14 +80,22 @@ class VideoEncoder(
                     index: Int,
                     info: MediaCodec.BufferInfo
                 ) {
-                    val buffer = codec.getOutputBuffer(index) ?: return
-                    if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                        // Codec-specific data: extract SPS and PPS
-                        parseSpsAndPps(buffer, info)
-                    } else if (info.size > 0) {
-                        onEncodedFrame?.invoke(buffer, info)
+                    try {
+                        val buffer = codec.getOutputBuffer(index) ?: return
+                        if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+                            // Codec-specific data: extract SPS and PPS
+                            parseSpsAndPps(buffer, info)
+                        } else if (info.size > 0) {
+                            onEncodedFrame?.invoke(buffer, info)
+                        }
+                    } catch (e: Exception) {
+                        // Guard against muxer / stream errors killing the
+                        // encoder callback thread.  Without this the HandlerThread
+                        // silently stops and no further frames are produced.
+                        e.printStackTrace()
+                    } finally {
+                        try { codec.releaseOutputBuffer(index, false) } catch (_: Exception) { }
                     }
-                    codec.releaseOutputBuffer(index, false)
                 }
 
                 override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
