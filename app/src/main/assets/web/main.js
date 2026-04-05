@@ -428,6 +428,7 @@ class ScrcpyWeb {
         this._keypadManager = new KeypadManager(grid, (msg) => this._send(msg));
         this._keypadManager.render();
 
+        this._initInputHandlers();
         this._initNumpad();
     }
 
