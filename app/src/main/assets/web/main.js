@@ -393,6 +393,7 @@ class ScrcpyWeb {
         this._segmentQueue = [];
         this._pendingInitData = null;
         this._pendingSegments = [];
+        this._waitingForKeyframe = false;
         this._frameCount = 0;
         this._fpsInterval = null;
         this._liveEdgeTimer = null;
@@ -536,13 +537,27 @@ class ScrcpyWeb {
 
         if (type === 0x01) {
             // Init segment — create or reuse SourceBuffer.
+            // Raise the keyframe gate: Safari's MSE is stricter than Chrome/Edge
+            // and will error (black screen) if P-frames arrive before the first IDR.
+            // Discard all inter-frames until the first IDR clears the gate.
             this._pendingSegments = [];
+            this._waitingForKeyframe = true;
             this._addSourceBuffer(payload);
         } else if (type === 0x02 || type === 0x03) {
-            // 0x02 = P-frame, 0x03 = keyframe.
-            // Both are forwarded to the SourceBuffer as-is; the browser's
-            // H264 decoder silently discards P-frames that arrive before the
-            // first IDR, so JS-level keyframe gating is unnecessary.
+            // 0x02 = P-frame, 0x03 = keyframe (IDR).
+            if (type === 0x03) {
+                // First IDR received — lower the gate so frames start flowing.
+                this._waitingForKeyframe = false;
+            }
+
+            // Drop inter-frames that arrive before the first IDR.
+            // Chrome/Edge silently discard these at the decoder level, but Safari's
+            // MSE implementation may throw a SourceBuffer error on premature P-frames,
+            // permanently black-screening clients that join a live stream mid-flight.
+            if (this._waitingForKeyframe) {
+                return;
+            }
+
             this._frameCount++;
 
             if (!this._sourceBuffer) {
