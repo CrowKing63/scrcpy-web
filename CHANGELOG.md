@@ -5,6 +5,18 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-04-05
+
+### Fixed
+- **Reconnection after idle:** New clients now receive fMP4 segments with sequence starting at 1 (not mid-stream), fixing MSE rejection on Safari after period of no connections
+- **Screen lock handling:** `onStopped` callback now properly cleans up encoder/muxer pipeline, preventing zombie state on subsequent restart
+- **Wake lock expiry:** Removed 4-hour timeout on `PARTIAL_WAKE_LOCK`, now released only by `stopCapture()` — prevents CPU sleep during long mirroring sessions
+- **Encoder crash recovery:** Added try-catch in MediaCodec callback to prevent `onEncodedFrame` exception from silently killing frame production
+
+### Added
+- **Remote capture restart:** Browser can now restart screen sharing using saved MediaProjection token after screen lock, without user interaction on phone (if token still valid)
+- **WebSocket restart command:** New `{"type":"restart_capture"}` message type for programmatic capture restart from web clients or keypad buttons
+
 ## [2.0.3] - 2026-04-05
 
 ### Fixed
