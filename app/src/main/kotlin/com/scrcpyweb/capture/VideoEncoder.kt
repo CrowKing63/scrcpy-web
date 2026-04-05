@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
+import android.util.Log
 import java.nio.ByteBuffer
 
 /**
@@ -161,6 +162,7 @@ class VideoEncoder(
      * The codec-specific data is in Annex B format: [00 00 00 01 SPS 00 00 00 01 PPS].
      */
     companion object {
+        private const val TAG = "VideoEncoder"
         /** Interval between forced IDR requests (milliseconds). */
         private const val KEYFRAME_REQUEST_INTERVAL_MS = 2000L
     }
@@ -193,6 +195,14 @@ class VideoEncoder(
         if (sps.contentEquals(lastSps) && pps.contentEquals(lastPps)) return
         lastSps = sps
         lastPps = pps
+
+        // Log the actual H264 profile so we can confirm the codec string
+        // matches what the browser uses in addSourceBuffer().
+        val profileHex = String.format("%02X", sps[1])
+        val compatHex  = String.format("%02X", sps[2])
+        val levelHex   = String.format("%02X", sps[3])
+        Log.i(TAG, "SPS: profile=0x$profileHex compat=0x$compatHex level=0x$levelHex → avc1.$profileHex$compatHex$levelHex (sps=${sps.size}B pps=${pps.size}B)")
+
         onSpsAvailable?.invoke(sps, pps)
     }
 }

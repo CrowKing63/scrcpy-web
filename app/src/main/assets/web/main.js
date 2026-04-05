@@ -546,6 +546,7 @@ class ScrcpyWeb {
             // Raise the keyframe gate: Safari's MSE is stricter than Chrome/Edge
             // and will error (black screen) if P-frames arrive before the first IDR.
             // Discard all inter-frames until the first IDR clears the gate.
+            console.log(`[Stream] init segment received (${payload.byteLength} bytes)`);
             this._pendingSegments = [];
             this._waitingForKeyframe = true;
             this._addSourceBuffer(payload);
@@ -553,6 +554,7 @@ class ScrcpyWeb {
             // 0x02 = P-frame, 0x03 = keyframe (IDR).
             if (type === 0x03) {
                 // First IDR received — lower the gate so frames start flowing.
+                console.log(`[Stream] keyframe received (${payload.byteLength} bytes) — gate open`);
                 this._waitingForKeyframe = false;
             }
 
@@ -582,8 +584,37 @@ class ScrcpyWeb {
     }
 
     /**
-     * Adds a SourceBuffer using the H264 Baseline MIME type and appends
-     * the fMP4 init segment.
+     * Parses the avcC box inside an fMP4 init segment and returns the
+     * correct avc1 codec string (e.g. "avc1.64001F" for High Profile
+     * Level 3.1).  Falls back to Baseline Level 3.0 if the box is not
+     * found.
+     *
+     * @param {ArrayBuffer} initData fMP4 init segment bytes.
+     * @returns {string} Codec string like "avc1.XXYYZZ".
+     */
+    _parseCodecString(initData) {
+        const bytes = new Uint8Array(initData);
+        // Search for the 'avcC' box type: 0x61='a' 0x76='v' 0x63='c' 0x43='C'
+        for (let i = 0; i < bytes.length - 7; i++) {
+            if (bytes[i] === 0x61 && bytes[i + 1] === 0x76 &&
+                bytes[i + 2] === 0x63 && bytes[i + 3] === 0x43 &&
+                bytes[i + 4] === 1) {
+                // avcC payload after 'avcC' type (4 bytes):
+                //   [configVersion=1(1)][profile(1)][compat(1)][level(1)]
+                // configVersion is at i+4, profile starts at i+5.
+                const profile = bytes[i + 5];
+                const compat  = bytes[i + 6];
+                const level   = bytes[i + 7];
+                const hex = (v) => v.toString(16).padStart(2, '0').toUpperCase();
+                return `avc1.${hex(profile)}${hex(compat)}${hex(level)}`;
+            }
+        }
+        return 'avc1.42E01E'; // fallback: Baseline Profile Level 3.0
+    }
+
+    /**
+     * Adds a SourceBuffer with the codec string derived from the init
+     * segment's avcC box and appends the fMP4 init segment.
      *
      * @param {ArrayBuffer} initData fMP4 init segment bytes.
      */
@@ -602,9 +633,11 @@ class ScrcpyWeb {
             return;
         }
 
-        const mimeType = 'video/mp4; codecs="avc1.42E01E"';
+        const codecStr = this._parseCodecString(initData);
+        const mimeType = `video/mp4; codecs="${codecStr}"`;
+        console.log('[MSE] Detected codec:', codecStr, '| MIME:', mimeType);
         if (!MediaSource.isTypeSupported(mimeType)) {
-            console.error('MIME type not supported:', mimeType);
+            console.error('[MSE] MIME type not supported:', mimeType);
             return;
         }
 
@@ -707,7 +740,11 @@ class ScrcpyWeb {
         }
 
         // Keep playback at the live edge — seek when >1 s behind.
-        if (bufEnd - video.currentTime > 1) {
+        // Also handle Safari's known bug where currentTime stays stuck at 0
+        // in 'sequence' SourceBuffer mode.
+        if (video.currentTime === 0 && bufEnd > 0.5) {
+            video.currentTime = bufEnd - 0.1;
+        } else if (bufEnd - video.currentTime > 1) {
             video.currentTime = bufEnd - 0.1;
         }
     }

@@ -24,12 +24,14 @@ class FMP4Muxer(
     private val width: Int,
     private val height: Int,
     private val sps: ByteArray,
-    private val pps: ByteArray
+    private val pps: ByteArray,
+    private val fps: Int = 30
 ) {
 
     private var sequenceNumber = 1
     private var trackId = 1
     private val timescale = 90000  // 90 kHz — standard for video
+    private var firstDts: Long = -1L  // first DTS for timestamp normalization
 
     // ─────────────────────────────────────────────────────────
     //  Public API
@@ -60,8 +62,14 @@ class FMP4Muxer(
      * @return Raw bytes of the moof + mdat segment.
      */
     fun muxFrame(data: ByteArray, isKeyFrame: Boolean, pts: Long, dts: Long): ByteArray {
+        // Normalise timestamps so tfdt starts at 0, preventing 32-bit overflow
+        // when the device has been running for more than ~13 hours.
+        if (firstDts < 0L) firstDts = dts
+        val normPts = pts - firstDts
+        val normDts = dts - firstDts
+
         val avcc = annexBToAvcc(data)
-        val moof = buildMoof(isKeyFrame, pts, dts, avcc.size)
+        val moof = buildMoof(isKeyFrame, normPts, normDts, avcc.size)
         val mdat = buildMdat(avcc)
         sequenceNumber++
         return moof + mdat
@@ -78,6 +86,7 @@ class FMP4Muxer(
      */
     fun resetSequence() {
         sequenceNumber = 1
+        firstDts = -1L
     }
 
     // ─────────────────────────────────────────────────────────
@@ -345,7 +354,7 @@ class FMP4Muxer(
         body.writeUint32(1)         // sample count
         body.writeInt32(0)          // data offset (placeholder — will be patched below)
         // single sample
-        body.writeUint32((timescale / 30).toLong())   // sample duration (1/30s at 90kHz = 3000)
+        body.writeUint32((timescale / fps).toLong())    // sample duration at configured fps
         body.writeUint32(dataSize.toLong())
         body.writeUint32(sampleFlags.toLong())
         body.writeInt32(compositionOffset)
@@ -403,6 +412,14 @@ class FMP4Muxer(
 
             val naluLen = end - i
             if (naluLen > 0) {
+                // Strip SPS (type 7) and PPS (type 8) NAL units from media
+                // frames — they belong only in the init segment's avcC box.
+                // Leaving them inline can confuse strict MSE decoders (Safari).
+                val naluType = annexB[i].toInt() and 0x1F
+                if (naluType == 7 || naluType == 8) {
+                    i = end
+                    continue
+                }
                 out.writeUint32(naluLen.toLong())  // 4-byte length prefix
                 out.write(annexB, i, naluLen)
             }
