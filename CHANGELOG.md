@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-04-05
+
+### Fixed
+- **Kotlin compilation error:** Replaced unresolved `AccessibilityNodeInfo.ACTION_SELECT_ALL` with
+  its integer constant value `0x00100000` to fix release build compilation
+
 ## [2.0.0] - 2026-04-05
 
 ### Added
