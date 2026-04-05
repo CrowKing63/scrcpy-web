@@ -110,6 +110,7 @@ body {
 
 /* ── Mirror screen — 3-column layout ────────────────────────────────── */
 #mirror-screen {
+    position: relative;
     background: #000;
     flex-direction: row;
     align-items: stretch;
@@ -554,3 +555,64 @@ body {
 @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; }
                      to   { transform: translateY(0);    opacity: 1; } }
+
+/* ── Capture-stopped overlay ─────────────────────────────────────────── */
+.capture-stopped-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.72);
+    backdrop-filter: blur(6px);
+    z-index: 50;
+    animation: fadeIn 0.2s ease;
+}
+.capture-stopped-overlay.hidden { display: none; }
+.capture-stopped-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 32px 28px;
+    background: var(--bg-surface);
+    border: 1px solid var(--sidebar-border);
+    border-radius: var(--radius);
+    text-align: center;
+    max-width: 320px;
+}
+.capture-stopped-text {
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* ── Numpad panel ────────────────────────────────────────────────────── */
+:root {
+    --numpad-btn-size: 52px;
+}
+.numpad-panel {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--sidebar-border);
+}
+.numpad-panel.hidden { display: none; }
+.numpad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.numpad-btn {
+    height: var(--numpad-btn-size);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--sidebar-border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s, transform 0.08s;
+    touch-action: manipulation;
+}
+.numpad-btn:hover  { background: rgba(0, 229, 255, 0.08); border-color: rgba(0, 229, 255, 0.3); }
+.numpad-btn:active { transform: scale(0.92); }

@@ -102,13 +102,27 @@
                 <div class="keypad-header">
                     <span class="keypad-title">Controls</span>
                     <div class="keypad-header-btns">
+                        <button class="icon-btn" id="btn-numpad-toggle" title="Toggle numpad" aria-label="Toggle numpad">123</button>
                         <button class="icon-btn" id="btn-add-key"    title="Add button"   aria-label="Add button"   style="display:none"></button>
                         <button class="icon-btn" id="btn-edit-keypad" title="Edit keypad" aria-label="Toggle edit mode"></button>
                     </div>
                 </div>
                 <div id="keypad-grid"></div>
+
+                <!-- Inline numpad for PIN / text-field input (hidden by default) -->
+                <div id="numpad-panel" class="numpad-panel hidden" aria-label="Numeric keypad">
+                    <div class="numpad-grid" id="numpad-grid"></div>
+                </div>
             </div>
         </aside>
+
+        <!-- Capture-stopped overlay: shown when MediaProjection stops (e.g. screen lock) -->
+        <div id="capture-stopped-overlay" class="capture-stopped-overlay hidden" role="status" aria-live="polite">
+            <div class="capture-stopped-card">
+                <p class="capture-stopped-text">Screen locked — unlock your phone to resume</p>
+                <button class="action-btn" id="btn-restart-capture">Restart Capture</button>
+            </div>
+        </div>
 
     </div>
 

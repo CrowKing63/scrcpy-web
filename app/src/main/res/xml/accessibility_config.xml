@@ -4,7 +4,7 @@
     android:accessibilityEventTypes=""
     android:accessibilityFeedbackType="feedbackGeneric"
     android:canPerformGestures="true"
-    android:canRetrieveWindowContent="false"
+    android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_description"
     android:notificationTimeout="0"
     android:settingsActivity="com.scrcpyweb.ui.MainActivity" />

@@ -173,6 +173,14 @@ class MainActivity : AppCompatActivity() {
         val btnStop = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnStopServer)
         val btnAccessibility = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAccessibility)
 
+        // Keep the screen on while actively mirroring so that MediaProjection is
+        // not stopped by the keyguard (Android 14+ stops projection on screen lock).
+        if (isCapturing) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
         when {
             isCapturing -> {
                 statusDot.backgroundTintList =

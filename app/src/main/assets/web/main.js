@@ -427,6 +427,8 @@ class ScrcpyWeb {
         const grid = document.getElementById('keypad-grid');
         this._keypadManager = new KeypadManager(grid, (msg) => this._send(msg));
         this._keypadManager.render();
+
+        this._initNumpad();
     }
 
     // ── WebSocket connection ────────────────────────────────────────────
@@ -456,6 +458,10 @@ class ScrcpyWeb {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'permission_needed') {
                         this._updateConnectionUI('permission_needed');
+                    } else if (msg.type === 'capture_stopped') {
+                        this._setCaptureStopped(true);
+                    } else if (msg.type === 'capture_started') {
+                        this._setCaptureStopped(false);
                     }
                 } catch (_) { /* ignore malformed text */ }
             }
@@ -781,6 +787,13 @@ class ScrcpyWeb {
             const { x, y } = this._normalise(e, video);
             this._send({ type: 'scroll', x, y, dx: e.deltaX, dy: e.deltaY });
         }, { passive: false });
+
+        // Right-click (or long-press on touch) → Android long-press / context menu.
+        video.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const { x, y } = this._normalise(e, video);
+            this._send({ type: 'touch', action: 'long_press', x, y, id: 0 });
+        });
     }
 
     /**
@@ -800,22 +813,97 @@ class ScrcpyWeb {
 
     // ── Keyboard ─────────────────────────────────────────────────────────
 
-    /** Captures keydown/keyup events and maps them to Android keycodes. */
+    /**
+     * Captures keydown/keyup events and forwards them to Android.
+     *
+     * - Navigation and function keys are mapped via KEY_MAP.
+     * - Ctrl/Meta+C/V/X/Z/A are sent as nav actions (copy/paste/cut/undo/selectAll)
+     *   and handled on the server via AccessibilityNodeInfo actions.
+     * - Single printable characters are forwarded as key events so the server can
+     *   append them to the focused text field via ACTION_SET_TEXT.
+     */
     _initKeyboard() {
+        /** Navigation / function key → Android keycode. */
         const KEY_MAP = {
-            'Backspace': 67, 'Enter': 66, 'Escape': 111,
+            'Backspace': 67, 'Enter': 66,  'Escape': 111, 'Delete': 112,
             'ArrowLeft': 21, 'ArrowRight': 22, 'ArrowUp': 19, 'ArrowDown': 20,
-            'Tab': 61, ' ': 62,
+            'Tab': 61,  ' ': 62,
+            'Home': 122, 'End': 123, 'PageUp': 92, 'PageDown': 93,
+            'F1': 131, 'F2': 132, 'F3': 133, 'F4': 134,  'F5': 135,
+            'F6': 136, 'F7': 137, 'F8': 138, 'F9': 139,  'F10': 140,
         };
-        const handler = (action) => (e) => {
-            const keyCode = KEY_MAP[e.key];
-            if (keyCode) {
-                e.preventDefault();
-                this._send({ type: 'key', keyCode, action });
+
+        /** Ctrl/Meta + key → nav action forwarded to AccessibilityNodeInfo. */
+        const CTRL_MAP = {
+            'c': 'copy', 'v': 'paste', 'x': 'cut', 'z': 'undo', 'a': 'selectAll',
+        };
+
+        /** Letter key → Android keycode (KEYCODE_A = 29). */
+        const letterCode = (ch) => {
+            const n = ch.toLowerCase().codePointAt(0) - 97; // 'a'=0
+            return (n >= 0 && n < 26) ? 29 + n : null;
+        };
+
+        /** Digit key → Android keycode (KEYCODE_0 = 7). */
+        const digitCode = (ch) => {
+            const n = ch.codePointAt(0) - 48; // '0'=0
+            return (n >= 0 && n <= 9) ? 7 + n : null;
+        };
+
+        let ctrl = false, meta = false, shift = false;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Control') { ctrl  = true; return; }
+            if (e.key === 'Meta')    { meta  = true; return; }
+            if (e.key === 'Shift')   { shift = true; return; }
+
+            // Ctrl / Meta shortcut → nav action (copy, paste, etc.)
+            if (ctrl || meta) {
+                const action = CTRL_MAP[e.key.toLowerCase()];
+                if (action) {
+                    e.preventDefault();
+                    this._send({ type: 'nav', action });
+                    return;
+                }
             }
-        };
-        document.addEventListener('keydown', handler('down'));
-        document.addEventListener('keyup',   handler('up'));
+
+            // Navigation / function key
+            const mappedCode = KEY_MAP[e.key];
+            if (mappedCode) {
+                e.preventDefault();
+                const metaState = (shift ? 0x01 : 0) | (ctrl ? 0x1000 : 0);
+                this._send({ type: 'key', keyCode: mappedCode, action: 'down', metaState });
+                return;
+            }
+
+            // Printable single character (letter or digit) — no modifier active
+            if (e.key.length === 1 && !ctrl && !meta) {
+                const kc = letterCode(e.key) ?? digitCode(e.key);
+                if (kc !== null) {
+                    e.preventDefault();
+                    const metaState = shift ? 0x01 : 0;
+                    this._send({ type: 'key', keyCode: kc, action: 'down', metaState });
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'Control') { ctrl  = false; return; }
+            if (e.key === 'Meta')    { meta  = false; return; }
+            if (e.key === 'Shift')   { shift = false; return; }
+
+            const mappedCode = KEY_MAP[e.key];
+            if (mappedCode) {
+                this._send({ type: 'key', keyCode: mappedCode, action: 'up', metaState: 0 });
+                return;
+            }
+            if (e.key.length === 1 && !ctrl && !meta) {
+                const kc = letterCode(e.key) ?? digitCode(e.key);
+                if (kc !== null) {
+                    this._send({ type: 'key', keyCode: kc, action: 'up', metaState: 0 });
+                }
+            }
+        });
     }
 
     // ── Sidebars ─────────────────────────────────────────────────────────
@@ -958,6 +1046,59 @@ class ScrcpyWeb {
         } catch (_) { /* ignore */ }
     }
 
+    // ── Numpad ────────────────────────────────────────────────────────────
+
+    /**
+     * Builds the inline numpad panel and wires the toggle button.
+     *
+     * Each numpad button sends a `key` type message with the corresponding
+     * Android key code.  The panel is hidden by default and can be toggled
+     * with the "123" button in the keypad header.
+     *
+     * Key codes: digits use KEYCODE_0–9 (7–16), ⌫ = 67 (Backspace), ↵ = 66 (Enter).
+     */
+    _initNumpad() {
+        /** @type {Array<[string, number]>} [label, androidKeyCode] */
+        const KEYS = [
+            ['7', 14], ['8', 15], ['9', 16],
+            ['4', 11], ['5', 12], ['6', 13],
+            ['1',  8], ['2',  9], ['3', 10],
+            ['⌫', 67], ['0',  7], ['↵', 66],
+        ];
+
+        const grid = document.getElementById('numpad-grid');
+        if (!grid) return;
+
+        for (const [label, keyCode] of KEYS) {
+            const btn = document.createElement('button');
+            btn.className   = 'numpad-btn';
+            btn.textContent = label;
+            btn.addEventListener('click', () => {
+                this._send({ type: 'key', keyCode, action: 'down', metaState: 0 });
+                setTimeout(() => this._send({ type: 'key', keyCode, action: 'up', metaState: 0 }), 50);
+            });
+            grid.appendChild(btn);
+        }
+
+        document.getElementById('btn-numpad-toggle')?.addEventListener('click', () => {
+            const panel = document.getElementById('numpad-panel');
+            panel?.classList.toggle('hidden');
+        });
+    }
+
+    // ── Capture state overlay ─────────────────────────────────────────────
+
+    /**
+     * Shows or hides the "screen locked" overlay that appears when
+     * MediaProjection stops (e.g. due to the Android screen locking).
+     *
+     * @param {boolean} stopped True to show the overlay, false to hide it.
+     */
+    _setCaptureStopped(stopped) {
+        document.getElementById('capture-stopped-overlay')
+            ?.classList.toggle('hidden', !stopped);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     /**
@@ -999,6 +1140,10 @@ class ScrcpyWeb {
 document.addEventListener('DOMContentLoaded', () => {
     const app = new ScrcpyWeb();
     document.getElementById('btn-request-capture')?.addEventListener('click', () => {
+        app._requestCapture();
+    });
+    // "Restart Capture" button on the capture-stopped overlay.
+    document.getElementById('btn-restart-capture')?.addEventListener('click', () => {
         app._requestCapture();
     });
 });

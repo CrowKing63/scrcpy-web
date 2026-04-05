@@ -6,6 +6,7 @@ import io.ktor.websocket.WebSocketSession
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -28,11 +29,22 @@ class StreamSession {
     @Volatile
     var initSegment: ByteArray? = null
 
+    /**
+     * The last keyframe (IDR) pre-headered packet. Sent to new clients immediately
+     * after the init segment so they can begin rendering without waiting for the
+     * next periodic IDR (which could be up to 2 s away on a static screen).
+     */
+    @Volatile
+    private var lastKeyframe: ByteArray? = null
+
     /** Called when a new client connects so the caller can request an IDR frame. */
     var onClientConnected: (() -> Unit)? = null
 
-    /** Frame queue: a channel-based approach is used inside each session coroutine. */
+    /** Per-session frame channels for ordered binary delivery. */
     private val frameListeners = ConcurrentHashMap<String, (ByteArray) -> Unit>()
+
+    /** Per-session status channels for JSON text delivery (e.g. capture_stopped). */
+    private val statusListeners = ConcurrentHashMap<String, (String) -> Unit>()
 
     /**
      * Handles a single incoming WebSocket session.
@@ -47,40 +59,53 @@ class StreamSession {
         val id = System.nanoTime().toString()
         sessions[id] = session
 
-        // Per-session channel carries pre-headered raw WebSocket payloads so that
-        // init segments (0x01) and media frames (0x02) share the same queue and
-        // are guaranteed to arrive at the client in insertion order.
-        // The listener is registered BEFORE enqueuing the init segment so that
-        // any concurrent updateInitSegment() call also goes through the channel.
-        val frameChannel = kotlinx.coroutines.channels.Channel<ByteArray>(capacity = 64)
-        frameListeners[id] = { rawFrame -> frameChannel.trySend(rawFrame) }
+        // Per-session channels carry payloads in insertion order so that
+        // init segments (0x01) and media frames (0x02/0x03) are never reordered.
+        val frameChannel  = Channel<ByteArray>(capacity = 64)
+        val statusChannel = Channel<String>(capacity = 4)
 
-        // Enqueue init segment through the channel so it is ordered correctly
-        // relative to any media frames that follow immediately.
+        // Register listeners BEFORE enqueuing the init segment so that any
+        // concurrent updateInitSegment() call also goes through the channel.
+        frameListeners[id]  = { rawFrame -> frameChannel.trySend(rawFrame) }
+        statusListeners[id] = { msg      -> statusChannel.trySend(msg) }
+
+        // Enqueue init segment so it arrives before any media frames.
         initSegment?.let { init ->
-            val header = buildHeader(0x01, init.size)
-            frameChannel.trySend(header + init)
+            frameChannel.trySend(buildHeader(0x01, init.size) + init)
         }
 
-        // Request a fresh IDR from the encoder so this client receives a
-        // decodable keyframe as soon as possible (~33 ms at 30 fps).
+        // Send the cached last keyframe so the client can start rendering
+        // immediately rather than waiting for the next periodic IDR.
+        lastKeyframe?.let { kf -> frameChannel.trySend(kf) }
+
+        // Request a fresh IDR from the encoder (~one frame interval, ≈33 ms at 30 fps).
         onClientConnected?.invoke()
+
+        // Per-session pointer tracking: pointerId → (startX, startY, startTimeMs)
+        val pointerStates = HashMap<Int, Triple<Float, Float, Long>>()
 
         try {
             coroutineScope {
-                // Sender coroutine: relay pre-headered frames to this client as-is
+                // Sender: multiplex binary frames and text status messages to client.
                 val senderJob = launch {
+                    launch {
+                        for (msg in statusChannel) {
+                            try { session.send(Frame.Text(msg)) } catch (_: Exception) { }
+                        }
+                    }
                     for (rawFrame in frameChannel) {
                         session.send(Frame.Binary(true, rawFrame))
                     }
                 }
 
-                // Receiver coroutine: handle incoming client messages
+                // Receiver: handle incoming client messages.
                 val receiverJob = launch {
                     for (incoming in session.incoming) {
                         when (incoming) {
-                            is Frame.Text -> handleTextMessage(incoming.readText(), session)
-                            else          -> Unit
+                            is Frame.Text -> handleTextMessage(
+                                incoming.readText(), session, pointerStates
+                            )
+                            else -> Unit
                         }
                     }
                 }
@@ -95,41 +120,54 @@ class StreamSession {
         } finally {
             sessions.remove(id)
             frameListeners.remove(id)
+            statusListeners.remove(id)
             frameChannel.close()
+            statusChannel.close()
         }
     }
 
     /**
-     * Broadcasts an fMP4 media segment to all connected clients via their
-     * per-session channels, preserving ordering with init segments.
+     * Broadcasts an fMP4 media segment to all connected clients.
      *
-     * Keyframes are sent with type 0x03 so clients can distinguish them from
-     * P-frames (0x02) and gate playback until the first keyframe arrives.
-     * The most recent keyframe is also cached for immediate delivery to
-     * newly connecting clients.
+     * Keyframes (IDR) are sent with type 0x03 so clients can gate playback
+     * until the first IDR arrives.  The latest keyframe is cached for
+     * immediate delivery to newly connecting clients.
      *
      * @param frameData  Raw fMP4 segment bytes (moof + mdat).
      * @param isKeyFrame Whether this frame is an IDR (keyframe).
      */
     fun sendFrameToAll(frameData: ByteArray, isKeyFrame: Boolean = false) {
-        val type = if (isKeyFrame) 0x03 else 0x02
+        val type   = if (isKeyFrame) 0x03 else 0x02
         val header = buildHeader(type, frameData.size)
         val packet = header + frameData
+        if (isKeyFrame) lastKeyframe = packet
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 
     /**
-     * Updates the stored init segment and enqueues it to all existing clients
-     * via their per-session channels so ordering relative to media frames is
-     * preserved.
+     * Updates the stored init segment and broadcasts it to all existing clients.
+     * Clears [lastKeyframe] because an old keyframe is incompatible with new
+     * SPS/PPS parameters (e.g. after a screen rotation or encoder reconfiguration).
      *
      * @param segment New fMP4 init segment (ftyp + moov).
      */
     fun updateInitSegment(segment: ByteArray) {
-        initSegment = segment
-        val header = buildHeader(0x01, segment.size)
-        val packet = header + segment
+        initSegment  = segment
+        lastKeyframe = null
+        val packet = buildHeader(0x01, segment.size) + segment
         frameListeners.values.forEach { listener -> listener(packet) }
+    }
+
+    /**
+     * Broadcasts a capture-state change notification as a JSON text frame to
+     * all connected clients. Called by [com.scrcpyweb.service.MirrorService]
+     * when capture starts or stops (e.g. due to screen lock).
+     *
+     * @param isCapturing True if capture just started, false if it stopped.
+     */
+    fun broadcastCaptureState(isCapturing: Boolean) {
+        val msg = if (isCapturing) """{"type":"capture_started"}""" else """{"type":"capture_stopped"}"""
+        statusListeners.values.forEach { it(msg) }
     }
 
     /**
@@ -137,85 +175,146 @@ class StreamSession {
      */
     fun clientCount(): Int = sessions.size
 
+    // ─────────────────────────────────────────────────────────
+    //  Message handling
+    // ─────────────────────────────────────────────────────────
+
     /**
-     * Parses a JSON control message from a browser client and dispatches the
-     * appropriate action to [TouchInjectionService].
+     * Parses a JSON control message and dispatches the appropriate action.
      *
-     * If [TouchInjectionService] is not running, sends a JSON error frame back
-     * to the originating [session] before returning.
-     *
-     * Supported message types: touch, nav, scroll, key, config.
-     *
-     * @param text    Raw JSON string received from the client.
-     * @param session The WebSocket session that sent the message, used for
-     *                sending error responses.
+     * @param text          Raw JSON string from the client.
+     * @param session       The originating session (used for error replies).
+     * @param pointerStates Per-session pointer state map for tap-vs-swipe tracking.
      */
-    private suspend fun handleTextMessage(text: String, session: WebSocketSession) {
+    private suspend fun handleTextMessage(
+        text: String,
+        session: WebSocketSession,
+        pointerStates: HashMap<Int, Triple<Float, Float, Long>>
+    ) {
         try {
             val json = JSONObject(text)
-            val type = json.optString("type")
-            // key and config messages do not require the accessibility service
-            if (type != "key" && type != "config") {
-                val service = TouchInjectionService.instance
-                if (service == null) {
-                    val error = """{"type":"error","message":"Accessibility service not enabled"}"""
-                    session.send(Frame.Text(error))
-                    return
+            when (val type = json.optString("type")) {
+                "config" -> { /* no-op: config is applied via SharedPreferences in MirrorService */ }
+                "key" -> {
+                    // Key injection via AccessibilityService (requires canRetrieveWindowContent).
+                    // Silently ignored if the service is unavailable.
+                    TouchInjectionService.instance?.injectKey(
+                        json.optInt("keyCode", 0),
+                        json.optInt("metaState", 0)
+                    )
                 }
-                when (type) {
-                    "touch"  -> handleTouchMessage(json, service)
-                    "nav"    -> handleNavMessage(json, service)
-                    "scroll" -> handleScrollMessage(json, service)
+                else -> {
+                    val service = TouchInjectionService.instance
+                    if (service == null) {
+                        session.send(Frame.Text("""{"type":"error","message":"Accessibility service not enabled"}"""))
+                        return
+                    }
+                    when (type) {
+                        "touch"  -> handleTouchMessage(json, service, pointerStates)
+                        "nav"    -> handleNavMessage(json, service)
+                        "scroll" -> handleScrollMessage(json, service)
+                    }
                 }
             }
-            // key and config are intentional no-ops for now
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun handleTouchMessage(json: JSONObject, service: TouchInjectionService?) {
-        if (service == null) return
+    /**
+     * Handles pointer events with proper tap-vs-swipe discrimination.
+     *
+     * - "down": records the start position and time.
+     * - "move": updates the current position (used for computing displacement).
+     * - "up":   if displacement ≥ [SWIPE_THRESHOLD] → swipe; otherwise → tap.
+     * - "long_press": injects a 600 ms stationary press (simulates long-tap / context menu).
+     *
+     * @param json          Parsed JSON message.
+     * @param service       Active [TouchInjectionService].
+     * @param pointerStates Mutable map of pointerId → (startX, startY, startTimeMs).
+     */
+    private fun handleTouchMessage(
+        json: JSONObject,
+        service: TouchInjectionService,
+        pointerStates: HashMap<Int, Triple<Float, Float, Long>>
+    ) {
         val action = json.optString("action")
-        val x = json.optDouble("x", 0.5).toFloat()
-        val y = json.optDouble("y", 0.5).toFloat()
+        val x      = json.optDouble("x", 0.5).toFloat()
+        val y      = json.optDouble("y", 0.5).toFloat()
+        val id     = json.optInt("id", 0)
+
         when (action) {
-            "down", "up" -> service.injectTap(x, y)
-            "move"       -> { /* continuous moves handled by injectSwipe */ }
+            "down" -> {
+                pointerStates[id] = Triple(x, y, System.currentTimeMillis())
+            }
+            "move" -> {
+                // Track the latest position without changing the recorded start.
+                // Currently used only for displacement check on "up".
+            }
+            "up" -> {
+                val state = pointerStates.remove(id)
+                if (state != null) {
+                    val (startX, startY, startTime) = state
+                    val dx           = x - startX
+                    val dy           = y - startY
+                    val displacement = Math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                    val duration     = System.currentTimeMillis() - startTime
+
+                    if (displacement >= SWIPE_THRESHOLD) {
+                        // Swipe/drag — duration determines speed naturally.
+                        service.injectSwipe(
+                            startX, startY, x, y,
+                            duration.coerceIn(100L, 1000L)
+                        )
+                    } else {
+                        service.injectTap(x, y)
+                    }
+                } else {
+                    // No matching "down" recorded; fall back to tap.
+                    service.injectTap(x, y)
+                }
+            }
+            "long_press" -> service.injectLongPress(x, y)
         }
     }
 
-    private fun handleNavMessage(json: JSONObject, service: TouchInjectionService?) {
-        service?.performNavAction(json.optString("action"))
+    private fun handleNavMessage(json: JSONObject, service: TouchInjectionService) {
+        service.performNavAction(json.optString("action"))
     }
 
-    private fun handleScrollMessage(json: JSONObject, service: TouchInjectionService?) {
-        if (service == null) return
-        val x = json.optDouble("x", 0.5).toFloat()
-        val y = json.optDouble("y", 0.5).toFloat()
+    private fun handleScrollMessage(json: JSONObject, service: TouchInjectionService) {
+        val x  = json.optDouble("x", 0.5).toFloat()
+        val y  = json.optDouble("y", 0.5).toFloat()
         val dx = json.optDouble("dx", 0.0).toFloat()
         val dy = json.optDouble("dy", 0.0).toFloat()
         service.injectScroll(x, y, dx, dy)
     }
 
+    // ─────────────────────────────────────────────────────────
+    //  Utilities
+    // ─────────────────────────────────────────────────────────
+
     /**
-     * Builds the 5-byte binary frame header used by the WebSocket protocol.
+     * Builds the 5-byte binary frame header.
      *
-     * Header layout:
-     *  - byte 0: message type (0x01 = init_segment, 0x02 = media_segment, 0x03 = keyframe_segment)
-     *  - bytes 1–4: data length as uint32 big-endian
-     *
-     * @param type       Message type byte.
-     * @param dataLength Length of the payload in bytes.
-     * @return 5-byte header array.
+     * Layout:
+     *  - byte 0:   message type (0x01 = init, 0x02 = P-frame, 0x03 = keyframe)
+     *  - bytes 1–4: payload length as uint32 big-endian
      */
-    private fun buildHeader(type: Int, dataLength: Int): ByteArray {
-        return byteArrayOf(
-            type.toByte(),
-            (dataLength shr 24 and 0xFF).toByte(),
-            (dataLength shr 16 and 0xFF).toByte(),
-            (dataLength shr 8  and 0xFF).toByte(),
-            (dataLength        and 0xFF).toByte()
-        )
+    private fun buildHeader(type: Int, dataLength: Int): ByteArray = byteArrayOf(
+        type.toByte(),
+        (dataLength shr 24 and 0xFF).toByte(),
+        (dataLength shr 16 and 0xFF).toByte(),
+        (dataLength shr 8  and 0xFF).toByte(),
+        (dataLength        and 0xFF).toByte()
+    )
+
+    companion object {
+        /**
+         * Minimum normalised displacement (fraction of screen width/height) to
+         * classify a pointer up event as a swipe rather than a tap.
+         * 0.02 = 2% of the screen dimension.
+         */
+        private const val SWIPE_THRESHOLD = 0.02f
     }
 }

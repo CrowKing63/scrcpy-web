@@ -5,6 +5,29 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-05
+
+### Added
+- **Numeric keypad UI:** New toggle button (123) in the keypad header that reveals a 3×4 numeric
+  input panel for PIN entry and text field interactions on-device
+- **Long-press context menus:** Right-click (contextmenu event) now dispatches a 600 ms stationary
+  press to trigger Android context menus
+
+### Fixed
+- **Black screen on initial connection:** Implement keyframe caching server-side (`lastKeyframe` in
+  StreamSession); newly connecting clients receive the cached IDR frame immediately after init segment,
+  enabling video display without waiting for the next periodic keyframe request
+- **Screen lock stopping capture:** Added `PARTIAL_WAKE_LOCK` acquisition (4-hour timeout) in
+  MirrorService and `FLAG_KEEP_SCREEN_ON` flag in MainActivity when capturing, preventing Android
+  from stopping MediaProjection when the device locks
+- **Drag/scroll unresponsive:** Implemented tap vs. swipe discrimination server-side: track pointer
+  down position; if displacement ≥ 2% screen fraction, dispatch swipe; otherwise dispatch single tap
+- **Limited keyboard shortcuts:** Expanded KEY_MAP with Delete, Home, End, PageUp/Down, F1–F10;
+  added CTRL_MAP for Ctrl/Meta+C/V/X/Z/A shortcuts (copy, paste, cut, undo, selectAll)
+- **No text input support:** Added `injectKey(keyCode, metaState)` for character-by-character input
+  via Android keycode; implemented character-to-keycode mapping with shift modifier support;
+  enabled `canRetrieveWindowContent` in accessibility config for text field node interaction
+
 ## [1.3.1] - 2026-04-04
 
 ### Fixed

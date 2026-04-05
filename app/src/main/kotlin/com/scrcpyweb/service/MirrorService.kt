@@ -12,6 +12,7 @@ import android.hardware.display.DisplayManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.DisplayMetrics
 import android.view.Display
 import androidx.core.app.NotificationCompat
@@ -38,6 +39,19 @@ class MirrorService : Service() {
     private var screenCapture: ScreenCapture? = null
     private var videoEncoder: VideoEncoder? = null
     private var fmp4Muxer: FMP4Muxer? = null
+
+    /**
+     * Partial wake lock acquired while capturing to keep the CPU running if the
+     * screen dims.  A full screen-on lock is not used here because on Android 14+
+     * the deprecated SCREEN_DIM_WAKE_LOCK is silently downgraded to PARTIAL by
+     * the platform.  Keeping the CPU alive at minimum ensures the Ktor server and
+     * encoder threads continue processing even with the display off.
+     *
+     * To prevent the screen from locking while mirroring (and thus stopping
+     * MediaProjection on Android 14+), the MainActivity sets FLAG_KEEP_SCREEN_ON
+     * on its window while [isCapturing] is true.
+     */
+    private var wakeLock: PowerManager.WakeLock? = null
 
     /** True while the screen capture pipeline is active. */
     var isCapturing: Boolean = false
@@ -133,6 +147,14 @@ class MirrorService : Service() {
         savedProjectionResultCode = resultCode
         savedProjectionData = data
 
+        // Acquire a partial wake lock to keep the CPU alive while mirroring.
+        // This prevents the Ktor server and encoder threads from being suspended
+        // if the display dims.  The screen itself is kept on by FLAG_KEEP_SCREEN_ON
+        // set on MainActivity's window (see updateUiFromService).
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
+            .also { it.acquire(MAX_WAKE_LOCK_MS) }
+
         val metrics = getScreenMetrics()
         val scale = getPreferredScale()
         val width = (metrics.widthPixels * scale).toInt().roundToEven()
@@ -170,6 +192,12 @@ class MirrorService : Service() {
                 capture.onStopped = {
                     isCapturing = false
                     updateNotification()
+                    // Notify all connected browser clients that capture has stopped
+                    // (e.g. due to screen lock on Android 14+) so they can show
+                    // a "unlock your phone" overlay instead of a frozen/black screen.
+                    webServer?.streamSession?.broadcastCaptureState(false)
+                    wakeLock?.release()
+                    wakeLock = null
                 }
                 capture.start(resultCode, data, encoder.getInputSurface(), width, height, dpi)
             }
@@ -177,17 +205,21 @@ class MirrorService : Service() {
 
         isCapturing = true
         updateNotification()
+        webServer?.streamSession?.broadcastCaptureState(true)
     }
 
     /**
      * Stops the capture pipeline and releases all resources in reverse init order.
      */
     fun stopCapture() {
+        webServer?.streamSession?.broadcastCaptureState(false)
         screenCapture?.stop()
         screenCapture = null
         videoEncoder?.stop()
         videoEncoder = null
         fmp4Muxer = null
+        wakeLock?.release()
+        wakeLock = null
         isCapturing = false
         updateNotification()
     }
@@ -332,8 +364,11 @@ class MirrorService : Service() {
         /** Intent extra key for the MediaProjection result intent data. */
         const val EXTRA_PROJECTION_DATA = "extra_projection_data"
 
-        private const val CHANNEL_ID = "scrcpy_web_channel"
+        private const val CHANNEL_ID     = "scrcpy_web_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val WAKE_LOCK_TAG   = "scrcpyweb:mirror"
+        /** Maximum wake-lock duration: 4 hours. The lock is always released in stopCapture. */
+        private const val MAX_WAKE_LOCK_MS = 4 * 60 * 60 * 1000L
     }
 }
 
