@@ -206,7 +206,7 @@ class TouchInjectionService : AccessibilityService() {
                 "copy"      -> node.performAction(AccessibilityNodeInfo.ACTION_COPY)
                 "cut"       -> node.performAction(AccessibilityNodeInfo.ACTION_CUT)
                 "paste"     -> node.performAction(AccessibilityNodeInfo.ACTION_PASTE)
-                "selectAll" -> node.performAction(AccessibilityNodeInfo.ACTION_SELECT_ALL)
+                "selectAll" -> node.performAction(0x00100000) // ACTION_SELECT_ALL
             }
             node.recycle()
         }
