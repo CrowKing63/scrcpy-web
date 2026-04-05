@@ -51,7 +51,10 @@ class TouchInjectionService : AccessibilityService() {
         val px = x * metrics.widthPixels
         val py = y * metrics.heightPixels
 
-        val path    = Path().apply { moveTo(px, py) }
+        val path    = Path().apply {
+            moveTo(px, py)
+            lineTo(px + 1f, py + 1f)
+        }
         val stroke  = GestureDescription.StrokeDescription(path, 0L, 50L)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
         dispatchGesture(gesture, null, null)

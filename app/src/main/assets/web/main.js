@@ -428,7 +428,6 @@ class ScrcpyWeb {
         this._keypadManager = new KeypadManager(grid, (msg) => this._send(msg));
         this._keypadManager.render();
 
-        this._initInputHandlers();
         this._initNumpad();
     }
 
@@ -751,6 +750,9 @@ class ScrcpyWeb {
      * Converts client coordinates to normalised (0–1) values before sending.
      */
     _initInputHandlers() {
+        if (this._inputHandlersReady) return;
+        this._inputHandlersReady = true;
+
         const video = document.getElementById('video-player');
         let lastMoveTime = 0;
         const THROTTLE_MS = 16; // ~60 Hz
