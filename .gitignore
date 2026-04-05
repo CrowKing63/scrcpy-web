@@ -73,13 +73,7 @@ keystore.properties
 # --- OS Specific ---
 .DS_Store
 Thumbs.db
-Desktop.ini
-
-# --- Project Specific (Claude, Docs, etc.) ---
-.claude/
-CLAUDE.md
-docs/*
-!docs/installation.md
+Desktop.in
 
 # Essential files to remain tracked
 !.gitignore

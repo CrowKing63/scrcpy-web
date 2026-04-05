@@ -1,0 +1,109 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Write(**.kt)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] Kotlin file written. Check: (1) All KDoc comments in English. (2) Kotlin official code style. (3) MediaCodec must use async Callback on a dedicated HandlerThread. (4) Release resources in reverse-init order.\"}}'",
+            "statusMessage": "Checking Kotlin conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Edit(**.kt)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] Kotlin file edited. Check: (1) All KDoc comments in English. (2) Kotlin official code style. (3) MediaCodec must use async Callback on a dedicated HandlerThread. (4) Release resources in reverse-init order.\"}}'",
+            "statusMessage": "Checking Kotlin conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Write(**.js)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] JS file written. Check: (1) JSDoc on all public methods in English. (2) No frameworks or build tools — Vanilla JS only. (3) ES2020+ syntax. (4) CSS custom properties for any new design tokens. (5) WebSocket messages must follow the binary protocol: [type 1B][length 4B BE][payload].\"}}'",
+            "statusMessage": "Checking JS conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Edit(**.js)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] JS file edited. Check: (1) JSDoc on all public methods in English. (2) No frameworks or build tools — Vanilla JS only. (3) ES2020+ syntax. (4) CSS custom properties for any new design tokens. (5) WebSocket messages must follow the binary protocol: [type 1B][length 4B BE][payload].\"}}'",
+            "statusMessage": "Checking JS conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Write(**/values/strings.xml)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] Default strings.xml written. IMPORTANT: This is the English source-of-truth. Korean translations must go in res/values-ko/strings.xml. Other languages use res/values-{locale}/strings.xml. Never add non-English strings here.\"}}'",
+            "statusMessage": "Checking i18n policy..."
+          },
+          {
+            "type": "command",
+            "if": "Edit(**/values/strings.xml)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] Default strings.xml edited. IMPORTANT: This is the English source-of-truth. Korean translations must go in res/values-ko/strings.xml. Other languages use res/values-{locale}/strings.xml. Never add non-English strings here.\"}}'",
+            "statusMessage": "Checking i18n policy..."
+          },
+          {
+            "type": "command",
+            "if": "Write(**/layout/*.xml)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] Layout XML written. Check: (1) Use Material3 components (MaterialButton, MaterialCardView, Slider) — no plain Button or CardView. (2) All user-visible text must reference @string/ resources — no hardcoded strings. (3) Theme attributes (colorPrimary, colorSurface) preferred over hardcoded hex values.\"}}'",
+            "statusMessage": "Checking layout conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Edit(**/layout/*.xml)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] Layout XML edited. Check: (1) Use Material3 components (MaterialButton, MaterialCardView, Slider) — no plain Button or CardView. (2) All user-visible text must reference @string/ resources — no hardcoded strings. (3) Theme attributes (colorPrimary, colorSurface) preferred over hardcoded hex values.\"}}'",
+            "statusMessage": "Checking layout conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Write(**build.gradle.kts)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] build.gradle.kts written. Check: (1) Ktor version must be 3.1.1. (2) Coroutines must be 1.9.0. (3) AGP must be 8.7.x, Kotlin 2.0.x. (4) Java source/target compatibility must be VERSION_17. (5) minSdk=29, targetSdk=36, compileSdk=36. (6) Release signing config uses debug keystore as placeholder — remind user to replace for production.\"}}'",
+            "statusMessage": "Checking Gradle conventions..."
+          },
+          {
+            "type": "command",
+            "if": "Edit(**build.gradle.kts)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[SCRCPY-Web] build.gradle.kts edited. Check: (1) Ktor version must be 3.1.1. (2) Coroutines must be 1.9.0. (3) AGP must be 8.7.x, Kotlin 2.0.x. (4) Java source/target compatibility must be VERSION_17. (5) minSdk=29, targetSdk=36, compileSdk=36. (6) Release signing config uses debug keystore as placeholder — remind user to replace for production.\"}}'",
+            "statusMessage": "Checking Gradle conventions..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"[SCRCPY-Web] Git commit reminder: (1) Use Conventional Commits in English: feat:, fix:, docs:, chore:, refactor:, test:. (2) To trigger auto-release, tag with: git tag v{major}.{minor}.{patch} && git push origin v{major}.{minor}.{patch}. (3) Update CHANGELOG.md before tagging a release.\"}}'",
+            "statusMessage": "Checking commit format..."
+          },
+          {
+            "type": "command",
+            "if": "Bash(git tag*)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"[SCRCPY-Web] Release tag reminder: Tag format must be v{major}.{minor}.{patch} (e.g., v0.1.0). Pushing this tag triggers GitHub Actions to build assembleRelease and publish a GitHub Release with the APK. Ensure CHANGELOG.md is updated first.\"}}'",
+            "statusMessage": "Checking release tag..."
+          },
+          {
+            "type": "command",
+            "if": "Bash(*assembleRelease*)",
+            "shell": "powershell",
+            "command": "Write-Output '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"[SCRCPY-Web] Release build reminder: (1) The current signingConfig uses the DEBUG keystore — suitable for testing only. For production, replace with a real keystore and set KEYSTORE_PATH, KEYSTORE_PASS, KEY_ALIAS, KEY_PASS env vars. (2) Ensure CHANGELOG.md is up to date. (3) Bump versionCode and versionName in app/build.gradle.kts before releasing.\"}}'",
+            "statusMessage": "Checking release build prerequisites..."
+          }
+        ]
+      }
+    ]
+  }
+}
