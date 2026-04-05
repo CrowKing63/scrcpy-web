@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-04-05
+
+### Fixed
+- **Clicking unresponsive:** Restored single-click functionality by appending a 1-pixel `lineTo` offset in `TouchInjectionService.injectTap`; zero-length `moveTo` strokes were dropping in newer Android versions
+- **Duplicate event listeners:** Added a guard flag (`_inputHandlersReady`) to `main.js`'s WebSocket connection handler, preventing listener accumulation (and double-clicks) during reconnections
+
 ## [2.0.1] - 2026-04-05
 
 ### Fixed
