@@ -191,7 +191,7 @@ class MirrorService : Service() {
 
         videoEncoder = VideoEncoder(width, height, bitrate, fps).also { encoder ->
             encoder.onSpsAvailable = { sps, pps ->
-                fmp4Muxer = FMP4Muxer(width, height, sps, pps)
+                fmp4Muxer = FMP4Muxer(width, height, sps, pps, fps)
                 val initSegment = fmp4Muxer!!.generateInitSegment()
                 webServer?.streamSession?.updateInitSegment(initSegment)
             }
