@@ -30,14 +30,6 @@ class StreamSession {
     var initSegment: ByteArray? = null
 
     /**
-     * The last keyframe (IDR) pre-headered packet. Sent to new clients immediately
-     * after the init segment so they can begin rendering without waiting for the
-     * next periodic IDR (which could be up to 2 s away on a static screen).
-     */
-    @Volatile
-    private var lastKeyframe: ByteArray? = null
-
-    /**
      * Called when a new client connects so the caller can request an IDR frame.
      *
      * The boolean parameter is `true` when this is the first client (the session
@@ -93,9 +85,16 @@ class StreamSession {
             frameChannel.trySend(buildHeader(0x01, init.size) + init)
         }
 
-        // Send the cached last keyframe so the client can start rendering
-        // immediately rather than waiting for the next periodic IDR.
-        lastKeyframe?.let { kf -> frameChannel.trySend(kf) }
+        // Do NOT send the cached lastKeyframe here.
+        //
+        // Sending a stale IDR_N followed by live P-frames causes a reference-
+        // frame gap at the decoder: P-frames between IDR_N and the current
+        // encoder position reference frames the client never received.
+        // On Safari / visionOS MSE this causes a SourceBuffer error from which
+        // the client cannot recover without a full reconnect.
+        //
+        // requestKeyframe() (invoked above via onClientConnected) delivers a
+        // fresh IDR in ~33 ms — fast enough to remove the need for a cached one.
 
         // Per-session pointer tracking: pointerId → (startX, startY, startTimeMs)
         val pointerStates = HashMap<Int, Triple<Float, Float, Long>>()
@@ -146,8 +145,7 @@ class StreamSession {
      * Broadcasts an fMP4 media segment to all connected clients.
      *
      * Keyframes (IDR) are sent with type 0x03 so clients can gate playback
-     * until the first IDR arrives.  The latest keyframe is cached for
-     * immediate delivery to newly connecting clients.
+     * until the first IDR arrives.
      *
      * @param frameData  Raw fMP4 segment bytes (moof + mdat).
      * @param isKeyFrame Whether this frame is an IDR (keyframe).
@@ -156,21 +154,17 @@ class StreamSession {
         val type   = if (isKeyFrame) 0x03 else 0x02
         val header = buildHeader(type, frameData.size)
         val packet = header + frameData
-        if (isKeyFrame) lastKeyframe = packet
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 
     /**
      * Updates the stored init segment and broadcasts it to all existing clients.
-     * Clears [lastKeyframe] because an old keyframe is incompatible with new
-     * SPS/PPS parameters (e.g. after a screen rotation or encoder reconfiguration).
      *
      * @param segment New fMP4 init segment (ftyp + moov).
      */
     fun updateInitSegment(segment: ByteArray) {
-        initSegment  = segment
-        lastKeyframe = null
-        val packet = buildHeader(0x01, segment.size) + segment
+        initSegment = segment
+        val packet  = buildHeader(0x01, segment.size) + segment
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 

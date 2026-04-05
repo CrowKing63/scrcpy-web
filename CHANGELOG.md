@@ -5,6 +5,11 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-04-05
+
+### Fixed
+- **Reconnection with black screen:** Removed stale keyframe caching that was sent to new clients alongside live P-frames, causing H264 decoder to fail when P-frames reference intermediate frames the client never received. Fresh IDR from `requestKeyframe()` (~33 ms) eliminates reference gap cleanly without performance penalty.
+
 ## [2.0.4] - 2026-04-05
 
 ### Fixed
