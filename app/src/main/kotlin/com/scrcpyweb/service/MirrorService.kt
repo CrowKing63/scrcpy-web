@@ -146,7 +146,10 @@ class MirrorService : Service() {
             server.streamSession.onRestartCapture = {
                 val rc = savedProjectionResultCode
                 val pd = savedProjectionData
-                if (!isCapturing && rc != 0 && pd != null) {
+                if (rc != 0 && pd != null) {
+                    // Restart even if isCapturing is true: the encoder may be stalled
+                    // (e.g. static screen content after a long idle period with no clients).
+                    // startCapture() always calls stopCapture() first, so this is safe.
                     try { startCapture(rc, pd); true }
                     catch (e: Exception) { e.printStackTrace(); false }
                 } else false

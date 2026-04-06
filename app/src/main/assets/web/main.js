@@ -401,6 +401,7 @@ class ScrcpyWeb {
         this._flushTimer = null;
         this._objectURL = null;
         this._droppedFrameLogged = false;
+        this._keyframeTimer = null;
         this._pauseHandler = () => {
             if (this._sourceBuffer && this._mediaSource?.readyState === 'open') {
                 document.getElementById('video-player').play().catch(() => {});
@@ -479,6 +480,29 @@ class ScrcpyWeb {
     }
 
     /**
+     * Starts a 10-second timer after an init segment is received.
+     * If no IDR keyframe arrives within the window, requests a capture restart
+     * from the server. This recovers from stalled encoders that occur when
+     * the Android screen is static for a long period with no connected clients.
+     */
+    _startKeyframeTimer() {
+        this._clearKeyframeTimer();
+        this._keyframeTimer = setTimeout(() => {
+            this._keyframeTimer = null;
+            console.warn('[Stream] no keyframe within 10s — requesting capture restart');
+            this._send({ type: 'restart_capture' });
+        }, 10000);
+    }
+
+    /** Cancels the pending keyframe timeout, if any. */
+    _clearKeyframeTimer() {
+        if (this._keyframeTimer !== null) {
+            clearTimeout(this._keyframeTimer);
+            this._keyframeTimer = null;
+        }
+    }
+
+    /**
      * Schedules a reconnect attempt with exponential backoff (max 5 seconds).
      */
     _scheduleReconnect() {
@@ -550,6 +574,7 @@ class ScrcpyWeb {
             console.log(`[Stream] init segment received (${payload.byteLength} bytes)`);
             this._pendingSegments = [];
             this._waitingForKeyframe = true;
+            this._startKeyframeTimer();
             this._addSourceBuffer(payload);
         } else if (type === 0x02 || type === 0x03) {
             // 0x02 = P-frame, 0x03 = keyframe (IDR).
@@ -557,6 +582,7 @@ class ScrcpyWeb {
                 // First IDR received — lower the gate so frames start flowing.
                 console.log(`[Stream] keyframe received (${payload.byteLength} bytes) — gate open`);
                 this._waitingForKeyframe = false;
+                this._clearKeyframeTimer();
             }
 
             // Drop inter-frames that arrive before the first IDR.
@@ -772,6 +798,7 @@ class ScrcpyWeb {
 
     /** Releases MediaSource and clears SourceBuffer references. */
     _teardownMSE() {
+        this._clearKeyframeTimer();
         this._sourceBuffer = null;
         this._segmentQueue = [];
         this._pendingInitData = null;

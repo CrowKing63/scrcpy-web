@@ -5,6 +5,28 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-04-06
+
+### Fixed
+- **Black screen after long idle:** When no clients were connected for an extended period, the Android virtual display stopped producing frames for a static screen, causing `requestKeyframe()` to have no effect on reconnect. Added a 10-second keyframe timeout in the browser client: if no IDR frame arrives after receiving the init segment, the client automatically sends `{"type":"restart_capture"}` to force a fresh encoder pipeline.
+- **Stalled encoder not restarted:** `onRestartCapture` now restarts the capture pipeline even when `isCapturing` is `true`, recovering from stalled encoders without requiring the user to manually stop and restart screen sharing. `startCapture()` already calls `stopCapture()` internally so the transition is clean.
+
+## [2.1.3] - 2026-04-06
+
+### Fixed
+- **Regression: first connection broken after v2.1.2:** Init segment was gated behind `isCapturing`, preventing SourceBuffer creation on first load. Now always sends the init segment and additionally sends `capture_stopped` when capture is not active, so the UI can show the correct prompt.
+- **`video.play()` AbortError on Safari:** Moved `play()` call from `_addSourceBuffer` (where `readyState` is `HAVE_METADATA`) to `_trimBuffer` (fired after a real media segment is appended), ensuring `readyState >= HAVE_FUTURE_DATA` before playback starts.
+
+## [2.1.2] - 2026-04-06
+
+### Added
+- **Capture state tracking:** `StreamSession` now exposes `isCapturing` flag so new clients that connect while capture is stopped immediately receive a `capture_stopped` notification instead of waiting on a black screen.
+
+## [2.1.1] - 2026-04-06
+
+### Fixed
+- **Black screen on some devices:** Hardware encoders that do not set `BUFFER_FLAG_KEY_FRAME` on IDR frames caused the browser's keyframe gate to never open. Added `containsIdrNalu()` fallback that inspects raw Annex B bytes for NALU type 5, correctly classifying keyframes regardless of codec flag reliability.
+
 ## [2.0.5] - 2026-04-05
 
 ### Fixed
