@@ -667,8 +667,11 @@ class ScrcpyWeb {
         document.getElementById('connection-status').className = 'status-dot connected';
         document.getElementById('connection-status-label').textContent = 'Connected';
 
-        const video = document.getElementById('video-player');
-        video.play().catch((err) => { console.warn('[MSE] play() rejected:', err.name); });
+        // Do NOT call video.play() here: the init segment contains only
+        // fMP4 headers (ftyp + moov) with no video frames, so readyState is
+        // HAVE_METADATA at best.  Calling play() before HAVE_FUTURE_DATA
+        // causes an AbortError on Safari.  Playback is started in _trimBuffer()
+        // once actual frame data has been buffered.
     }
 
     /**
@@ -735,6 +738,18 @@ class ScrcpyWeb {
         const buffered = this._sourceBuffer.buffered;
         if (buffered.length === 0) return;
         const bufEnd = buffered.end(buffered.length - 1);
+
+        // Start playback once real frame data is available.
+        // play() is intentionally deferred from _addSourceBuffer because the
+        // init segment alone (ftyp + moov, no frames) leaves readyState at
+        // HAVE_METADATA, causing Safari to reject play() with AbortError.
+        // By the time _trimBuffer fires (from updateend after a media segment
+        // is appended) readyState is HAVE_FUTURE_DATA or higher and play()
+        // succeeds reliably.
+        if (video.paused) {
+            video.play().catch((err) => { console.warn('[MSE] play() rejected:', err.name); });
+            return;
+        }
 
         // Trim everything more than 2 s behind the live edge.
         const trimTo = bufEnd - 2;

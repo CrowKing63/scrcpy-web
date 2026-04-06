@@ -89,15 +89,14 @@ class StreamSession {
         frameListeners[id]  = { rawFrame -> frameChannel.trySend(rawFrame) }
         statusListeners[id] = { msg      -> statusChannel.trySend(msg) }
 
-        // When capture is active, enqueue the cached init segment so it arrives
-        // before any media frames.  When capture has already stopped, send a
-        // capture_stopped status instead — the client's UI will prompt the user
-        // to restart rather than waiting forever on a black screen.
-        if (isCapturing) {
-            initSegment?.let { init ->
-                frameChannel.trySend(buildHeader(0x01, init.size) + init)
-            }
-        } else {
+        // Always enqueue the cached init segment (if any) so new clients can
+        // set up the MSE SourceBuffer immediately.
+        initSegment?.let { init ->
+            frameChannel.trySend(buildHeader(0x01, init.size) + init)
+        }
+        // If capture is not active, also notify the client so the UI can
+        // prompt the user to restart rather than waiting on a black screen.
+        if (!isCapturing) {
             statusChannel.trySend("""{"type":"capture_stopped"}""")
         }
 
