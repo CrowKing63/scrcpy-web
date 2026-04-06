@@ -400,6 +400,7 @@ class ScrcpyWeb {
         this._reconnectDelay = 1000;
         this._flushTimer = null;
         this._objectURL = null;
+        this._droppedFrameLogged = false;
         this._pauseHandler = () => {
             if (this._sourceBuffer && this._mediaSource?.readyState === 'open') {
                 document.getElementById('video-player').play().catch(() => {});
@@ -563,8 +564,13 @@ class ScrcpyWeb {
             // MSE implementation may throw a SourceBuffer error on premature P-frames,
             // permanently black-screening clients that join a live stream mid-flight.
             if (this._waitingForKeyframe) {
+                if (!this._droppedFrameLogged) {
+                    console.warn('[Stream] dropping inter-frame — waiting for first IDR');
+                    this._droppedFrameLogged = true;
+                }
                 return;
             }
+            this._droppedFrameLogged = false;
 
             this._frameCount++;
 
@@ -662,7 +668,7 @@ class ScrcpyWeb {
         document.getElementById('connection-status-label').textContent = 'Connected';
 
         const video = document.getElementById('video-player');
-        video.play().catch(() => { /* autoplay policy — muted so should succeed */ });
+        video.play().catch((err) => { console.warn('[MSE] play() rejected:', err.name); });
     }
 
     /**

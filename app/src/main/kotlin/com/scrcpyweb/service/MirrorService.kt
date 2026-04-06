@@ -203,6 +203,7 @@ class MirrorService : Service() {
                     buffer.position(info.offset)
                     buffer.get(frameData)
                     val isKeyFrame = (info.flags and android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+                        || containsIdrNalu(frameData)
                     val segment = muxer.muxFrame(frameData, isKeyFrame, info.presentationTimeUs, info.presentationTimeUs)
                     webServer?.streamSession?.sendFrameToAll(segment, isKeyFrame)
                 }
@@ -402,3 +403,35 @@ class MirrorService : Service() {
 
 /** Rounds an Int up to the nearest even number (required by some H264 encoders). */
 private fun Int.roundToEven(): Int = if (this % 2 == 0) this else this + 1
+
+/**
+ * Returns true if [data] (Annex B format) contains at least one IDR slice NALU (type 5).
+ *
+ * Used as a fallback when [android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME] is not
+ * reliably set by some hardware encoders — a known quirk on certain Android devices.
+ */
+private fun containsIdrNalu(data: ByteArray): Boolean {
+    var i = 0
+    while (i < data.size) {
+        if (i + 3 < data.size &&
+            data[i] == 0.toByte() && data[i + 1] == 0.toByte() &&
+            data[i + 2] == 0.toByte() && data[i + 3] == 1.toByte()
+        ) {
+            val naluStart = i + 4
+            if (naluStart < data.size && (data[naluStart].toInt() and 0x1F) == 5) return true
+            i = naluStart
+            continue
+        }
+        if (i + 2 < data.size &&
+            data[i] == 0.toByte() && data[i + 1] == 0.toByte() &&
+            data[i + 2] == 1.toByte()
+        ) {
+            val naluStart = i + 3
+            if (naluStart < data.size && (data[naluStart].toInt() and 0x1F) == 5) return true
+            i = naluStart
+            continue
+        }
+        i++
+    }
+    return false
+}
