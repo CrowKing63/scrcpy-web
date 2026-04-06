@@ -30,6 +30,15 @@ class StreamSession {
     var initSegment: ByteArray? = null
 
     /**
+     * Whether screen capture is currently active.
+     * Used to inform clients that connect after capture has stopped so they
+     * receive a [capture_stopped] notification rather than waiting forever for
+     * frames that will never arrive.
+     */
+    @Volatile
+    var isCapturing: Boolean = false
+
+    /**
      * Called when a new client connects so the caller can request an IDR frame.
      *
      * The boolean parameter is `true` when this is the first client (the session
@@ -80,9 +89,16 @@ class StreamSession {
         frameListeners[id]  = { rawFrame -> frameChannel.trySend(rawFrame) }
         statusListeners[id] = { msg      -> statusChannel.trySend(msg) }
 
-        // Enqueue init segment so it arrives before any media frames.
-        initSegment?.let { init ->
-            frameChannel.trySend(buildHeader(0x01, init.size) + init)
+        // When capture is active, enqueue the cached init segment so it arrives
+        // before any media frames.  When capture has already stopped, send a
+        // capture_stopped status instead — the client's UI will prompt the user
+        // to restart rather than waiting forever on a black screen.
+        if (isCapturing) {
+            initSegment?.let { init ->
+                frameChannel.trySend(buildHeader(0x01, init.size) + init)
+            }
+        } else {
+            statusChannel.trySend("""{"type":"capture_stopped"}""")
         }
 
         // Do NOT send the cached lastKeyframe here.

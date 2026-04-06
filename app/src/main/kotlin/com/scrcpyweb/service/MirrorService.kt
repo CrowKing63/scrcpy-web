@@ -235,6 +235,7 @@ class MirrorService : Service() {
         }
 
         isCapturing = true
+        webServer?.streamSession?.isCapturing = true
         updateNotification()
         webServer?.streamSession?.broadcastCaptureState(true)
     }
@@ -243,6 +244,7 @@ class MirrorService : Service() {
      * Stops the capture pipeline and releases all resources in reverse init order.
      */
     fun stopCapture() {
+        webServer?.streamSession?.isCapturing = false
         webServer?.streamSession?.broadcastCaptureState(false)
         screenCapture?.stop()
         screenCapture = null
