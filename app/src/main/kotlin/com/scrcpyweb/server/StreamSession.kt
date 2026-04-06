@@ -222,7 +222,14 @@ class StreamSession {
                 "config" -> { /* no-op: config is applied via SharedPreferences in MirrorService */ }
                 "restart_capture" -> {
                     val ok = onRestartCapture?.invoke() ?: false
-                    session.send(Frame.Text("""{"type":"restart_capture_result","success":$ok}"""))
+                    if (ok) {
+                        session.send(Frame.Text("""{"type":"restart_capture_result","success":true}"""))
+                    } else {
+                        // MediaProjection token is single-use; once the projection is stopped
+                        // the saved resultCode/data cannot create a new one.  Tell the browser
+                        // to show the permission screen so the user knows to tap Allow again.
+                        session.send(Frame.Text("""{"type":"permission_needed"}"""))
+                    }
                 }
                 "key" -> {
                     // Key injection via AccessibilityService (requires canRetrieveWindowContent).

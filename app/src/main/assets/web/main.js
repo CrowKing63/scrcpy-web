@@ -461,6 +461,8 @@ class ScrcpyWeb {
                     if (msg.type === 'permission_needed') {
                         this._updateConnectionUI('permission_needed');
                     } else if (msg.type === 'capture_stopped') {
+                        // Capture is already stopped — no point waiting for a keyframe.
+                        this._clearKeyframeTimer();
                         this._setCaptureStopped(true);
                     } else if (msg.type === 'capture_started') {
                         this._setCaptureStopped(false);

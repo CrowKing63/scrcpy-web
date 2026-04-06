@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.5] - 2026-04-06
+
+### Fixed
+- **Restart Capture button silent failure:** When the MediaProjection token is spent (single-use per Android spec), `restart_capture` now responds with `permission_needed` instead of a silent no-op, so the browser immediately shows the "Permission Required" screen with correct instructions to tap Allow in the app.
+- **Spurious auto-restart after capture stop:** Keyframe timeout timer is now cancelled when `capture_stopped` is received, preventing an automatic `restart_capture` attempt 10 seconds later when the capture pipeline is already known to be stopped.
+
 ## [2.1.4] - 2026-04-06
 
 ### Fixed
