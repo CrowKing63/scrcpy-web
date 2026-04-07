@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.8] - 2026-04-07
+
+### Fixed
+- **Resilient auto-tap for multi-step dialogs:** Replaced text-matching based button detection with a **cancel-button-anchor approach**. Now finds the cancel/deny button (highly consistent across OEMs) and clicks its sibling — the positive action button. Eliminates need to enumerate all possible positive button texts ("Allow", "화면 공유", "Screen share", etc.) which vary by OEM, locale, and dialog step. Works correctly for all button layouts as long as cancel and positive buttons are siblings.
+- **Text fallback:** Kept text-based matching as fallback for unusual dialog layouts where cancel and positive buttons are not siblings.
+
 ## [2.1.7] - 2026-04-07
 
 ### Fixed

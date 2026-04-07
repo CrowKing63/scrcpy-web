@@ -49,13 +49,13 @@ class TouchInjectionService : AccessibilityService() {
     /**
      * Detects the MediaProjection consent dialog and auto-taps through it.
      *
-     * Handles multi-step dialogs (e.g. Samsung One UI: select share mode →
-     * "Next" → "Allow"). Only active while [autoTapEnabled] is true — set by
-     * [enableAutoTap] when the browser requests capture.
+     * Instead of matching specific positive-button texts (which vary by OEM,
+     * Android version, locale, and dialog step), this uses the **cancel button
+     * as an anchor** and clicks its sibling — the positive action button.
+     * Cancel/deny button text is highly consistent across all variants.
      *
-     * Accepts events from any system-related package to cover OEM variants
-     * (Samsung, Pixel, AOSP). A debounce guard prevents redundant rapid-fire
-     * processing of [TYPE_WINDOW_CONTENT_CHANGED] events.
+     * Handles multi-step dialogs (e.g. Samsung One UI: select share mode →
+     * "Next" → "Allow") by staying active until the 10-second timeout expires.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!autoTapEnabled) return
@@ -70,16 +70,12 @@ class TouchInjectionService : AccessibilityService() {
 
         val root = rootInActiveWindow ?: return
         try {
-            // Priority 1: Final confirmation button — ends the flow.
-            if (tryClickButton(root, FINAL_BUTTON_TEXTS)) {
-                autoTapEnabled = false
-                autoTapHandler.removeCallbacksAndMessages(null)
-                return
-            }
-            // Priority 2: "Next" / "다음" button — advances to confirmation step.
-            if (tryClickButton(root, NEXT_BUTTON_TEXTS)) return
-            // Priority 3: Select "Entire screen" option from dropdown (best-effort).
-            tryClickButton(root, ENTIRE_SCREEN_TEXTS)
+            // Primary: find the cancel button, then click its non-cancel sibling.
+            // Works regardless of the positive button's text.
+            if (tryClickPositiveButton(root)) return
+            // Fallback: match known positive button texts directly, in case
+            // the dialog layout doesn't pair cancel/positive as siblings.
+            tryClickButtonByText(root, KNOWN_POSITIVE_TEXTS)
         } finally {
             root.recycle()
         }
@@ -94,10 +90,10 @@ class TouchInjectionService : AccessibilityService() {
     /**
      * Enables auto-tap mode for the MediaProjection consent dialog.
      *
-     * The service will listen for system dialog windows and attempt to
-     * auto-tap through all steps (select entire screen → Next → Allow).
-     * Auto-disables after the final confirmation is clicked or after a
-     * 10-second safety timeout.
+     * The service will detect system dialog windows and auto-tap the
+     * positive button by locating the cancel button and clicking its
+     * sibling. Handles multi-step dialogs by staying active until the
+     * 10-second safety timeout expires.
      */
     fun enableAutoTap() {
         autoTapEnabled = true
@@ -106,42 +102,110 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Searches the accessibility node tree for a node whose text matches one of
-     * the given [texts] and clicks it.
+     * Finds the cancel/deny button in the dialog and clicks its sibling —
+     * the positive action button. This approach is resilient to OEM and locale
+     * variations in positive button text ("Next", "Allow", "화면 공유", etc.).
      *
-     * If the matching text node is not itself clickable, walks up the parent
-     * chain to find the nearest clickable ancestor (e.g. a Button wrapping a
-     * TextView).
+     * The cancel button text is highly consistent across Android variants,
+     * making it a reliable anchor to locate the button pair.
+     *
+     * @param root Root [AccessibilityNodeInfo] of the active window.
+     * @return True if a positive button was found and clicked.
+     */
+    private fun tryClickPositiveButton(root: AccessibilityNodeInfo): Boolean {
+        for (cancelText in CANCEL_BUTTON_TEXTS) {
+            val cancelNodes = root.findAccessibilityNodeInfosByText(cancelText)
+            for (cancelNode in cancelNodes) {
+                // Walk up to the clickable cancel button.
+                val cancelBtn = findClickableAncestor(cancelNode)
+                if (cancelBtn != null) {
+                    val container = cancelBtn.parent
+                    if (container != null) {
+                        // Click the sibling that is NOT the cancel button.
+                        for (i in 0 until container.childCount) {
+                            val child = container.getChild(i) ?: continue
+                            if (child.isClickable && !matchesCancelText(child)) {
+                                val clicked = child.performAction(
+                                    AccessibilityNodeInfo.ACTION_CLICK
+                                )
+                                child.recycle()
+                                container.recycle()
+                                cancelBtn.recycle()
+                                cancelNodes.forEach { it.recycle() }
+                                return clicked
+                            }
+                            child.recycle()
+                        }
+                        container.recycle()
+                    }
+                    cancelBtn.recycle()
+                }
+            }
+            cancelNodes.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    /**
+     * Fallback: searches for nodes whose text matches one of the given [texts]
+     * and clicks the first match found. Used when the cancel-sibling approach
+     * fails (e.g. unusual dialog layout).
      *
      * @param root  Root [AccessibilityNodeInfo] of the active window.
      * @param texts Candidate button labels to search for.
      * @return True if a matching node was successfully clicked.
      */
-    private fun tryClickButton(root: AccessibilityNodeInfo, texts: List<String>): Boolean {
+    private fun tryClickButtonByText(root: AccessibilityNodeInfo, texts: List<String>): Boolean {
         for (text in texts) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
             for (node in nodes) {
-                if (node.isClickable) {
-                    val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                val clickable = findClickableAncestor(node)
+                if (clickable != null) {
+                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    clickable.recycle()
                     nodes.forEach { it.recycle() }
                     return clicked
                 }
-                // Text may be inside a non-clickable TextView — walk up to find
-                // the clickable Button parent.
-                var parent = node.parent
-                while (parent != null) {
-                    if (parent.isClickable) {
-                        val clicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        parent.recycle()
-                        nodes.forEach { it.recycle() }
-                        return clicked
-                    }
-                    val grandparent = parent.parent
-                    parent.recycle()
-                    parent = grandparent
-                }
             }
             nodes.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    /**
+     * Returns the node itself if clickable, otherwise walks up the parent chain
+     * to find the nearest clickable ancestor.
+     *
+     * @param node Starting node.
+     * @return The clickable node, or null if none found.
+     */
+    private fun findClickableAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isClickable) return node
+        var parent = node.parent
+        while (parent != null) {
+            if (parent.isClickable) return parent
+            val grandparent = parent.parent
+            parent.recycle()
+            parent = grandparent
+        }
+        return null
+    }
+
+    /**
+     * Checks whether a node or any of its immediate children contain cancel/deny
+     * text, used to distinguish the cancel button from the positive action button.
+     */
+    private fun matchesCancelText(node: AccessibilityNodeInfo): Boolean {
+        val nodeText = node.text?.toString() ?: ""
+        val nodeDesc = node.contentDescription?.toString() ?: ""
+        if (CANCEL_BUTTON_TEXTS.any { nodeText.contains(it, true) || nodeDesc.contains(it, true) }) {
+            return true
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val childText = child.text?.toString() ?: ""
+            child.recycle()
+            if (CANCEL_BUTTON_TEXTS.any { childText.contains(it, true) }) return true
         }
         return false
     }
@@ -404,25 +468,20 @@ class TouchInjectionService : AccessibilityService() {
         private const val AUTO_TAP_DEBOUNCE_MS = 300L
 
         /**
-         * Final confirmation button texts for the MediaProjection consent
-         * dialog across Android versions and supported locales.
+         * Cancel/deny button texts used as anchors to locate the positive
+         * action button. These are highly consistent across OEMs and locales.
          */
-        private val FINAL_BUTTON_TEXTS = listOf(
-            "Start now", "Allow", "Start", "허용", "지금 시작", "시작"
+        private val CANCEL_BUTTON_TEXTS = listOf(
+            "취소", "Cancel", "거부", "Deny", "Don't allow"
         )
 
         /**
-         * Intermediate "Next" button texts for multi-step consent dialogs
-         * (e.g. Samsung One UI shows a share-mode chooser before confirmation).
+         * Known positive button texts as a fallback when the cancel-sibling
+         * approach fails. Covers AOSP, Samsung One UI, and common locales.
          */
-        private val NEXT_BUTTON_TEXTS = listOf("Next", "다음")
-
-        /**
-         * "Entire screen" option texts to select full-screen capture mode
-         * when the dialog defaults to single-app sharing.
-         */
-        private val ENTIRE_SCREEN_TEXTS = listOf(
-            "Entire screen", "전체 화면", "전체 화면 공유"
+        private val KNOWN_POSITIVE_TEXTS = listOf(
+            "Start now", "Allow", "Start", "Next", "Share", "Share screen",
+            "허용", "지금 시작", "시작", "다음", "화면 공유", "공유"
         )
     }
 }
