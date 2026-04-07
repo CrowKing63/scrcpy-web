@@ -3,6 +3,7 @@ package com.scrcpyweb.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.graphics.Rect
 import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
@@ -81,7 +82,7 @@ class TouchInjectionService : AccessibilityService() {
                     Log.d(TAG, "Clicked positive button via cancel-sibling")
                     return
                 }
-                if (tryClickButtonByText(root, KNOWN_POSITIVE_TEXTS)) {
+                if (tryClickButtonByExactText(root, KNOWN_POSITIVE_TEXTS)) {
                     Log.d(TAG, "Clicked positive button via text fallback")
                     return
                 }
@@ -161,36 +162,28 @@ class TouchInjectionService : AccessibilityService() {
         for (cancelText in CANCEL_BUTTON_TEXTS) {
             val cancelNodes = root.findAccessibilityNodeInfosByText(cancelText)
             for (cancelNode in cancelNodes) {
-                // Walk up to the clickable cancel button.
                 val cancelBtn = findClickableAncestor(cancelNode)
                 if (cancelBtn != null) {
-                    // Search up to 2 ancestor levels for a container that holds
-                    // a non-cancel clickable node. On some OEMs (Samsung One UI)
-                    // buttons are individually wrapped, so the immediate parent
-                    // may only contain the cancel button itself. Limiting to 2
-                    // levels avoids reaching the dialog root where unrelated
-                    // clickable elements (dropdowns, checkboxes) could match.
-                    var container = cancelBtn.parent
-                    var depth = 0
-                    while (container != null && depth < 2) {
-                        val positive = findNonCancelClickable(container)
-                        if (positive != null) {
-                            val clicked = positive.performAction(
-                                AccessibilityNodeInfo.ACTION_CLICK
-                            )
-                            Log.d(TAG, "Positive button found at depth=$depth")
-                            positive.recycle()
-                            container.recycle()
-                            cancelBtn.recycle()
-                            cancelNodes.forEach { it.recycle() }
-                            return clicked
-                        }
-                        val parent = container.parent
-                        container.recycle()
-                        container = parent
-                        depth++
+                    val cancelRect = Rect()
+                    cancelBtn.getBoundsInScreen(cancelRect)
+                    // Search the entire tree for a clickable non-cancel node
+                    // vertically aligned with the cancel button (same row).
+                    // This reliably skips dropdowns, toggles, and other UI
+                    // elements above the button bar.
+                    val positive = findClickableAlignedWith(root, cancelRect)
+                    if (positive != null) {
+                        val positiveRect = Rect()
+                        positive.getBoundsInScreen(positiveRect)
+                        Log.d(TAG, "Positive button at y=${positiveRect.top}, " +
+                                "cancel at y=${cancelRect.top}")
+                        val clicked = positive.performAction(
+                            AccessibilityNodeInfo.ACTION_CLICK
+                        )
+                        positive.recycle()
+                        cancelBtn.recycle()
+                        cancelNodes.forEach { it.recycle() }
+                        return clicked
                     }
-                    container?.recycle()
                     cancelBtn.recycle()
                 }
             }
@@ -200,25 +193,32 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Searches [node]'s descendants (up to [maxDepth] levels deep) for a
-     * clickable node that is not a cancel/deny button. Stops at the first
-     * match found (depth-first). Depth is limited to avoid matching unrelated
-     * clickable elements (dropdowns, toggles) higher in the tree.
+     * Recursively searches the node tree for a clickable, non-cancel node
+     * whose vertical centre is within one button-height of [cancelRect]'s
+     * vertical centre. This ensures only elements in the same button row
+     * are matched, skipping dropdowns and other controls above the buttons.
      *
-     * @param node     Parent node to search within (not recycled by this method).
-     * @param maxDepth Maximum levels to descend (default 2).
-     * @return The clickable non-cancel descendant, or null if none found.
+     * @param node       Current node in the traversal (not recycled).
+     * @param cancelRect Screen bounds of the cancel button.
+     * @return A matching clickable node, or null.
      */
-    private fun findNonCancelClickable(
+    private fun findClickableAlignedWith(
         node: AccessibilityNodeInfo,
-        maxDepth: Int = 2
+        cancelRect: Rect
     ): AccessibilityNodeInfo? {
-        if (maxDepth <= 0) return null
+        val cancelCenterY = cancelRect.centerY()
+        val tolerance = cancelRect.height()
+
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            if (matchesCancelText(child)) { child.recycle(); continue }
-            if (child.isClickable) return child
-            val result = findNonCancelClickable(child, maxDepth - 1)
+            if (child.isClickable && !matchesCancelText(child)) {
+                val bounds = Rect()
+                child.getBoundsInScreen(bounds)
+                if (Math.abs(bounds.centerY() - cancelCenterY) <= tolerance) {
+                    return child
+                }
+            }
+            val result = findClickableAlignedWith(child, cancelRect)
             if (result != null) { child.recycle(); return result }
             child.recycle()
         }
@@ -226,18 +226,26 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Fallback: searches for nodes whose text matches one of the given [texts]
-     * and clicks the first match found. Used when the cancel-sibling approach
-     * fails (e.g. unusual dialog layout).
+     * Fallback: searches for nodes whose text **exactly** matches one of the
+     * given [texts] and clicks the first match. Exact matching avoids false
+     * positives from substring hits (e.g. "화면 공유" inside "전체 화면 공유").
      *
      * @param root  Root [AccessibilityNodeInfo] of the active window.
      * @param texts Candidate button labels to search for.
      * @return True if a matching node was successfully clicked.
      */
-    private fun tryClickButtonByText(root: AccessibilityNodeInfo, texts: List<String>): Boolean {
+    private fun tryClickButtonByExactText(
+        root: AccessibilityNodeInfo,
+        texts: List<String>
+    ): Boolean {
         for (text in texts) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
             for (node in nodes) {
+                val nodeText = node.text?.toString()?.trim() ?: ""
+                if (!nodeText.equals(text, ignoreCase = true)) {
+                    node.recycle()
+                    continue
+                }
                 val clickable = findClickableAncestor(node)
                 if (clickable != null) {
                     val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
@@ -557,14 +565,13 @@ class TouchInjectionService : AccessibilityService() {
         )
 
         /**
-         * Known positive button texts as a fallback when the cancel-sibling
-         * approach fails. Only includes unambiguous texts that won't match
-         * dropdown labels (e.g. "화면 공유" is excluded because it substring-
-         * matches "전체 화면 공유" in the share-mode dropdown).
+         * Known positive button texts as a fallback when the cancel-anchor
+         * approach fails. Uses exact matching so substring-ambiguous texts
+         * like "화면 공유" are safe (won't match "전체 화면 공유").
          */
         private val KNOWN_POSITIVE_TEXTS = listOf(
-            "Start now", "Allow", "Next",
-            "허용", "지금 시작", "다음"
+            "Start now", "Allow", "Start", "Next", "Share screen",
+            "허용", "지금 시작", "시작", "다음", "화면 공유"
         )
     }
 }

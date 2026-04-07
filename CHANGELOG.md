@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.11] - 2026-04-07
+
+### Fixed
+- **Auto-tap clicking dropdown instead of positive button:** Replaced tree-traversal based sibling search with **screen-coordinate alignment**. Now uses `getBoundsInScreen()` to find a clickable non-cancel node at the same Y position as the cancel button, reliably skipping dropdowns and other controls above the button bar regardless of DOM nesting depth.
+- **Fallback text matching hitting dropdown labels:** `tryClickButtonByExactText()` now filters `findAccessibilityNodeInfosByText()` results to **exact text matches only**, preventing substring hits like "화면 공유" matching "전체 화면 공유" in the share-mode dropdown.
+
 ## [2.1.10] - 2026-04-07
 
 ### Fixed
