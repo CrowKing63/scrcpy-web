@@ -164,31 +164,65 @@ class TouchInjectionService : AccessibilityService() {
                 // Walk up to the clickable cancel button.
                 val cancelBtn = findClickableAncestor(cancelNode)
                 if (cancelBtn != null) {
-                    val container = cancelBtn.parent
-                    if (container != null) {
-                        // Click the sibling that is NOT the cancel button.
-                        for (i in 0 until container.childCount) {
-                            val child = container.getChild(i) ?: continue
-                            if (child.isClickable && !matchesCancelText(child)) {
-                                val clicked = child.performAction(
-                                    AccessibilityNodeInfo.ACTION_CLICK
-                                )
-                                child.recycle()
-                                container.recycle()
-                                cancelBtn.recycle()
-                                cancelNodes.forEach { it.recycle() }
-                                return clicked
-                            }
-                            child.recycle()
+                    // Search up to 2 ancestor levels for a container that holds
+                    // a non-cancel clickable node. On some OEMs (Samsung One UI)
+                    // buttons are individually wrapped, so the immediate parent
+                    // may only contain the cancel button itself. Limiting to 2
+                    // levels avoids reaching the dialog root where unrelated
+                    // clickable elements (dropdowns, checkboxes) could match.
+                    var container = cancelBtn.parent
+                    var depth = 0
+                    while (container != null && depth < 2) {
+                        val positive = findNonCancelClickable(container)
+                        if (positive != null) {
+                            val clicked = positive.performAction(
+                                AccessibilityNodeInfo.ACTION_CLICK
+                            )
+                            Log.d(TAG, "Positive button found at depth=$depth")
+                            positive.recycle()
+                            container.recycle()
+                            cancelBtn.recycle()
+                            cancelNodes.forEach { it.recycle() }
+                            return clicked
                         }
+                        val parent = container.parent
                         container.recycle()
+                        container = parent
+                        depth++
                     }
+                    container?.recycle()
                     cancelBtn.recycle()
                 }
             }
             cancelNodes.forEach { it.recycle() }
         }
         return false
+    }
+
+    /**
+     * Searches [node]'s descendants (up to [maxDepth] levels deep) for a
+     * clickable node that is not a cancel/deny button. Stops at the first
+     * match found (depth-first). Depth is limited to avoid matching unrelated
+     * clickable elements (dropdowns, toggles) higher in the tree.
+     *
+     * @param node     Parent node to search within (not recycled by this method).
+     * @param maxDepth Maximum levels to descend (default 2).
+     * @return The clickable non-cancel descendant, or null if none found.
+     */
+    private fun findNonCancelClickable(
+        node: AccessibilityNodeInfo,
+        maxDepth: Int = 2
+    ): AccessibilityNodeInfo? {
+        if (maxDepth <= 0) return null
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (matchesCancelText(child)) { child.recycle(); continue }
+            if (child.isClickable) return child
+            val result = findNonCancelClickable(child, maxDepth - 1)
+            if (result != null) { child.recycle(); return result }
+            child.recycle()
+        }
+        return null
     }
 
     /**
@@ -524,11 +558,13 @@ class TouchInjectionService : AccessibilityService() {
 
         /**
          * Known positive button texts as a fallback when the cancel-sibling
-         * approach fails. Covers AOSP, Samsung One UI, and common locales.
+         * approach fails. Only includes unambiguous texts that won't match
+         * dropdown labels (e.g. "화면 공유" is excluded because it substring-
+         * matches "전체 화면 공유" in the share-mode dropdown).
          */
         private val KNOWN_POSITIVE_TEXTS = listOf(
-            "Start now", "Allow", "Start", "Next", "Share", "Share screen",
-            "허용", "지금 시작", "시작", "다음", "화면 공유", "공유"
+            "Start now", "Allow", "Next",
+            "허용", "지금 시작", "다음"
         )
     }
 }

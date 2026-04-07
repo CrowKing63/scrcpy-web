@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.10] - 2026-04-07
+
+### Fixed
+- **Auto-tap not clicking positive button on Samsung One UI:** Cancel and positive buttons are individually wrapped in container views, so the direct-sibling search missed the positive button. Now walks up to 2 ancestor levels and searches descendants (depth-limited to 2) via `findNonCancelClickable()`, correctly finding wrapped buttons without reaching unrelated elements like dropdowns.
+- **Fallback text matching clicking dropdown instead of button:** Removed ambiguous entries ("화면 공유", "공유", "Share") from `KNOWN_POSITIVE_TEXTS` that substring-matched dropdown labels (e.g. "전체 화면 공유"), causing the dropdown to reopen instead of clicking the action button.
+
 ## [2.1.9] - 2026-04-07
 
 ### Fixed

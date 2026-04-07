@@ -6,7 +6,11 @@
       "Bash(powershell -command \"\\(Get-Content -Encoding Byte gradle/wrapper/gradle-wrapper.jar -TotalCount 4 | ForEach-Object { ''{0:X2}'' -f $_}\\) -join '' ''\")",
       "Bash(jar tf:*)",
       "Bash(xargs grep:*)",
-      "Skill(tag-push)"
+      "Skill(tag-push)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)"
     ]
   }
 }
