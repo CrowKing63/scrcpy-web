@@ -54,6 +54,14 @@ class StreamSession {
      */
     var onRestartCapture: (() -> Boolean)? = null
 
+    /**
+     * Called when a browser client requests a fresh capture via WebSocket
+     * (`{"type":"request_capture"}`).  Unlike [onRestartCapture], this
+     * launches the full permission flow including the transparent Activity
+     * and auto-tap when the saved token is unavailable.
+     */
+    var onRequestCapture: (() -> Unit)? = null
+
     /** Per-session frame channels for ordered binary delivery. */
     private val frameListeners = ConcurrentHashMap<String, (ByteArray) -> Unit>()
 
@@ -196,6 +204,16 @@ class StreamSession {
     }
 
     /**
+     * Broadcasts a capture failure notification to all connected WebSocket clients.
+     *
+     * @param reason Short machine-readable reason string (e.g. "user_denied").
+     */
+    fun broadcastCaptureFailed(reason: String) {
+        val msg = """{"type":"capture_failed","reason":"$reason"}"""
+        statusListeners.values.forEach { it(msg) }
+    }
+
+    /**
      * Returns the number of currently connected WebSocket clients.
      */
     fun clientCount(): Int = sessions.size
@@ -230,6 +248,10 @@ class StreamSession {
                         // to show the permission screen so the user knows to tap Allow again.
                         session.send(Frame.Text("""{"type":"permission_needed"}"""))
                     }
+                }
+                "request_capture" -> {
+                    session.send(Frame.Text("""{"type":"capture_starting"}"""))
+                    onRequestCapture?.invoke()
                 }
                 "key" -> {
                     // Key injection via AccessibilityService (requires canRetrieveWindowContent).

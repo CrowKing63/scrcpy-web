@@ -5,6 +5,8 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.media.AudioManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
@@ -21,20 +23,109 @@ import android.view.accessibility.AccessibilityNodeInfo
  */
 class TouchInjectionService : AccessibilityService() {
 
+    private val autoTapHandler = Handler(Looper.getMainLooper())
+
+    /**
+     * When true, [onAccessibilityEvent] will attempt to find and click the
+     * "Allow" button on the MediaProjection consent dialog. One-shot: resets
+     * to false after a successful click or after a 10-second timeout.
+     */
+    @Volatile
+    private var autoTapEnabled = false
+
     override fun onServiceConnected() {
         instance = this
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        autoTapHandler.removeCallbacksAndMessages(null)
         instance = null
         return super.onUnbind(intent)
     }
 
-    /** No-op: this service does not monitor accessibility events. */
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    /**
+     * Detects the MediaProjection consent dialog and auto-taps "Allow".
+     *
+     * Only active while [autoTapEnabled] is true — set by [enableAutoTap]
+     * when the browser requests capture. Limits itself to windows owned by
+     * `com.android.systemui` to avoid tapping unrelated dialogs.
+     */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (!autoTapEnabled) return
 
-    /** No-op: interrupts are not applicable for a gesture-only service. */
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg != "com.android.systemui") return
+
+        val root = rootInActiveWindow ?: return
+        try {
+            if (tryClickAllowButton(root)) {
+                autoTapEnabled = false
+                autoTapHandler.removeCallbacksAndMessages(null)
+            }
+        } finally {
+            root.recycle()
+        }
+    }
+
     override fun onInterrupt() = Unit
+
+    // ─────────────────────────────────────────────────────────
+    //  Auto-tap API
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Enables auto-tap mode for the MediaProjection consent dialog.
+     *
+     * The service will listen for a `com.android.systemui` window and attempt
+     * to click the "Allow" / "Start now" button. Auto-disables after a
+     * successful click or after a 10-second safety timeout.
+     */
+    fun enableAutoTap() {
+        autoTapEnabled = true
+        autoTapHandler.removeCallbacksAndMessages(null)
+        autoTapHandler.postDelayed({ autoTapEnabled = false }, AUTO_TAP_TIMEOUT_MS)
+    }
+
+    /**
+     * Traverses the accessibility node tree to find and click the positive
+     * button on the MediaProjection consent dialog.
+     *
+     * Searches for known button texts across English and Korean locales.
+     * If the matching text node is not itself clickable, walks up the parent
+     * chain to find the nearest clickable ancestor.
+     *
+     * @param root Root [AccessibilityNodeInfo] of the active window.
+     * @return True if a button was successfully clicked.
+     */
+    private fun tryClickAllowButton(root: AccessibilityNodeInfo): Boolean {
+        for (text in ALLOW_BUTTON_TEXTS) {
+            val nodes = root.findAccessibilityNodeInfosByText(text)
+            for (node in nodes) {
+                if (node.isClickable) {
+                    val clicked = node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    nodes.forEach { it.recycle() }
+                    return clicked
+                }
+                // Text may be inside a non-clickable TextView — walk up to find
+                // the clickable Button parent.
+                var parent = node.parent
+                while (parent != null) {
+                    if (parent.isClickable) {
+                        val clicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        parent.recycle()
+                        nodes.forEach { it.recycle() }
+                        return clicked
+                    }
+                    val grandparent = parent.parent
+                    parent.recycle()
+                    parent = grandparent
+                }
+            }
+            nodes.forEach { it.recycle() }
+        }
+        return false
+    }
 
     // ─────────────────────────────────────────────────────────
     //  Public injection API
@@ -286,5 +377,14 @@ class TouchInjectionService : AccessibilityService() {
         private const val KEYCODE_ENTER     = 66
         /** Combined Shift-key bitmask (left, right, or caps-lock). */
         private const val META_SHIFT_MASK   = 0x41  // META_SHIFT_ON | META_CAPS_LOCK_ON
+
+        /** Auto-tap safety timeout: disables after 10 seconds to prevent stale taps. */
+        private const val AUTO_TAP_TIMEOUT_MS = 10_000L
+
+        /**
+         * Known button texts for the MediaProjection consent dialog across
+         * Android versions and supported locales (English + Korean).
+         */
+        private val ALLOW_BUTTON_TEXTS = listOf("Start now", "Allow", "허용", "지금 시작")
     }
 }

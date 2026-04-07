@@ -13,6 +13,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import com.scrcpyweb.ui.ProjectionRequestActivity
 import android.util.DisplayMetrics
 import android.view.Display
 import androidx.core.app.NotificationCompat
@@ -123,24 +124,11 @@ class MirrorService : Service() {
         webServer = WebServer(port = 8080, assetManager = assets).also { server ->
             server.onDeviceInfoRequest = { getDeviceInfo() }
             server.onStartCapture = {
-                // Try to restart capture using the saved MediaProjection consent
-                // token.  This allows browser clients to resume mirroring after a
-                // screen-lock stop without the user having to re-grant permission
-                // on the phone.  The token may be invalidated by the OS, so we
-                // catch any failure and return false to signal the client.
-                val rc = savedProjectionResultCode
-                val pd = savedProjectionData
-                if (!isCapturing && rc != 0 && pd != null) {
-                    try {
-                        startCapture(rc, pd)
-                        true
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        false
-                    }
-                } else {
-                    false
-                }
+                // Browser requested capture start — delegate to the full
+                // request flow which tries the saved token first, then falls
+                // back to launching the transparent permission Activity.
+                requestCaptureFromBrowser()
+                true
             }
             server.onStopCapture = { stopCapture() }
             server.streamSession.onRestartCapture = {
@@ -154,8 +142,72 @@ class MirrorService : Service() {
                     catch (e: Exception) { e.printStackTrace(); false }
                 } else false
             }
+            server.streamSession.onRequestCapture = {
+                requestCaptureFromBrowser()
+            }
             server.start()
         }
+    }
+
+    // ─────────────────────────────────────────────────────────
+    //  Browser-initiated capture request
+    // ─────────────────────────────────────────────────────────
+
+    /**
+     * Handles a capture request originating from a browser client.
+     *
+     * Attempts to reuse the saved MediaProjection token first. If no valid
+     * token exists (or it has been invalidated), wakes the screen if necessary
+     * and launches [ProjectionRequestActivity] to obtain fresh consent.
+     * The [TouchInjectionService] auto-tap is enabled so the "Allow" button
+     * on the system consent dialog is tapped automatically.
+     */
+    fun requestCaptureFromBrowser() {
+        if (isCapturing) return
+
+        // Try the saved token first — avoids showing the permission dialog
+        // if the token is still valid (e.g. capture stopped but process alive).
+        val rc = savedProjectionResultCode
+        val pd = savedProjectionData
+        if (rc != 0 && pd != null) {
+            try {
+                startCapture(rc, pd)
+                return
+            } catch (_: Exception) {
+                // Token expired or invalidated — fall through to fresh request.
+            }
+        }
+
+        // Wake the screen if it is off so the system permission dialog is visible.
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (!pm.isInteractive) {
+            @Suppress("DEPRECATION")
+            val wl = pm.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "scrcpyweb:wakeForProjection"
+            )
+            wl.acquire(5000L)
+        }
+
+        // Enable auto-tap so the AccessibilityService taps "Allow" automatically.
+        TouchInjectionService.instance?.enableAutoTap()
+
+        // Launch the transparent Activity that fires createScreenCaptureIntent().
+        val intent = Intent(this, ProjectionRequestActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+    }
+
+    /**
+     * Broadcasts a capture failure message to all connected WebSocket clients.
+     *
+     * Called by [ProjectionRequestActivity] when the user denies the
+     * MediaProjection consent dialog.
+     *
+     * @param reason Short machine-readable reason string (e.g. "user_denied").
+     */
+    fun broadcastCaptureFailed(reason: String) {
+        webServer?.streamSession?.broadcastCaptureFailed(reason)
     }
 
     // ─────────────────────────────────────────────────────────

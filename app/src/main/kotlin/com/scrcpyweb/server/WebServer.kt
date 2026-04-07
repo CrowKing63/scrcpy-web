@@ -85,7 +85,9 @@ class WebServer(
 
         get("/api/device-info") {
             call.response.header(HttpHeaders.AccessControlAllowOrigin, "*")
-            val info = onDeviceInfoRequest?.invoke() ?: emptyMap<String, Any>()
+            val info = onDeviceInfoRequest?.invoke()?.toMutableMap() ?: mutableMapOf()
+            info["isCapturing"] = com.scrcpyweb.service.MirrorService.instance?.isCapturing ?: false
+            info["isAccessibilityEnabled"] = com.scrcpyweb.service.TouchInjectionService.instance != null
             call.respondText(
                 mapToJson(info),
                 ContentType.Application.Json

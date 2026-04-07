@@ -5,6 +5,20 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.6] - 2026-04-07
+
+### Added
+- **Web dashboard:** Browser now shows a dashboard interface with device info (model, Android version, battery, IP) and "Start Mirroring" button instead of auto-connecting to stream. Device info refreshes every 5 seconds while on the dashboard.
+- **On-demand mirroring:** Users can click "Start Mirroring" on the dashboard to request capture, which launches the MediaProjection permission flow on the phone. Enables graceful handling of screen lock and permission token expiry.
+- **Auto-tap MediaProjection "Allow" button:** When the browser requests mirroring, the AccessibilityService automatically detects and clicks the "Allow" button on the system permission dialog (supports English and Korean locales across Android 10-14+), eliminating the need for manual interaction on the phone.
+- **Transparent Activity for permission flow:** New `ProjectionRequestActivity` launched from background to show the MediaProjection consent dialog with automatic screen wake-up (`setTurnScreenOn(true)`), enabling seamless permission requests even when the phone is locked.
+- **AccessibilityService event monitoring:** Service now listens for `TYPE_WINDOW_STATE_CHANGED` events to detect the system permission dialog and auto-tap the button with a 10-second safety timeout.
+- **Capture failure notifications:** Browser now receives `capture_failed` messages from the server, allowing proper error handling and retry UI on the dashboard.
+
+### Changed
+- **WebSocket protocol extended:** New message type `request_capture` for on-demand mirroring requests, replacing auto-connect flow. Device info API now includes `isCapturing` and `isAccessibilityEnabled` fields for dashboard status display.
+- **Accessibility service configuration:** Updated to monitor `typeWindowStateChanged` events for permission dialog detection while maintaining gesture-only mode for regular input.
+
 ## [2.1.5] - 2026-04-06
 
 ### Fixed

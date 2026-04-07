@@ -34,6 +34,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Transparent Activity for launching MediaProjection permission from background -->
+        <activity
+            android:name=".ui.ProjectionRequestActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ScrcpyWeb.Transparent" />
+
         <!-- Screen mirror foreground service (MediaProjection) -->
         <service
             android:name=".service.MirrorService"

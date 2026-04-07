@@ -12,14 +12,30 @@
 </head>
 <body>
 
-    <!-- ── Connection screen ─────────────────────────────────────── -->
-    <div id="connection-screen" class="screen active">
-        <div class="connect-card">
-            <div class="pulse-ring"></div>
-            <div class="connect-icon">📱</div>
-            <h1 class="connect-title">SCRCPY-Web</h1>
-            <p class="connect-status" id="connect-status-text">Connecting…</p>
-            <div id="device-info" class="device-info hidden"></div>
+    <!-- ── Dashboard screen ──────────────────────────────────────── -->
+    <div id="dashboard-screen" class="screen active">
+        <div class="dashboard-card">
+            <h1 class="dashboard-title">SCRCPY-Web</h1>
+            <div class="dashboard-device-info">
+                <div class="device-detail"><span class="detail-label">Device</span><span class="detail-value" id="dash-device-model">--</span></div>
+                <div class="device-detail"><span class="detail-label">Android</span><span class="detail-value" id="dash-android-version">--</span></div>
+                <div class="device-detail"><span class="detail-label">Battery</span><span class="detail-value" id="dash-battery">--</span></div>
+                <div class="device-detail"><span class="detail-label">IP</span><span class="detail-value" id="dash-ip">--</span></div>
+            </div>
+            <div class="dashboard-status">
+                <span class="status-dot" id="dash-status-dot"></span>
+                <span id="dash-status-text">Connecting...</span>
+            </div>
+            <div class="dashboard-services">
+                <div class="service-badge" id="dash-accessibility-badge">
+                    <span class="badge-dot"></span>
+                    <span>Accessibility Service</span>
+                </div>
+            </div>
+            <button class="action-btn dashboard-start-btn" id="btn-start-mirroring" disabled>
+                Start Mirroring
+            </button>
+            <p class="dashboard-hint" id="dash-hint"></p>
         </div>
     </div>
 
@@ -126,15 +142,7 @@
 
     </div>
 
-    <!-- ── Permission screen ─────────────────────────────────────── -->
-    <div id="permission-screen" class="screen hidden">
-        <div class="connect-card">
-            <div class="connect-icon">🔒</div>
-            <h2 class="connect-title">Permission Required</h2>
-            <p class="connect-status">Please tap <strong>Grant Screen Capture Permission</strong> in the SCRCPY-Web app on your phone, then tap Allow.</p>
-            <button class="action-btn" id="btn-request-capture">Request Capture</button>
-        </div>
-    </div>
+    <!-- Permission screen removed — integrated into dashboard -->
 
     <!-- ── Key editor modal ──────────────────────────────────────── -->
     <div id="key-editor-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">

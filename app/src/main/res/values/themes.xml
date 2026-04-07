@@ -11,4 +11,13 @@
         <item name="colorOnSurface">#E0E0E0</item>
         <item name="colorOnBackground">#E0E0E0</item>
     </style>
+
+    <!-- Transparent theme for ProjectionRequestActivity (invisible permission launcher) -->
+    <style name="Theme.ScrcpyWeb.Transparent" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

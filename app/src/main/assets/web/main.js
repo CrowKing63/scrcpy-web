@@ -418,6 +418,10 @@ class ScrcpyWeb {
             }
         };
         this._pointers = new Map();
+        /** Whether we are on the dashboard (not yet mirroring). */
+        this._onDashboard = true;
+        /** Interval ID for polling /api/device-info while on the dashboard. */
+        this._deviceInfoInterval = null;
 
         this._initIcons();
         this._initSidebars();
@@ -425,12 +429,41 @@ class ScrcpyWeb {
         this._initKeyboard();
         this._initSettings();
         this._fetchDeviceInfo();
+        this._startDeviceInfoPolling();
 
         const grid = document.getElementById('keypad-grid');
         this._keypadManager = new KeypadManager(grid, (msg) => this._send(msg));
         this._keypadManager.render();
 
         this._initNumpad();
+    }
+
+    // ── Dashboard ───────────────────────────────────────────────────────
+
+    /** Starts periodic device-info polling while on the dashboard. */
+    _startDeviceInfoPolling() {
+        this._stopDeviceInfoPolling();
+        this._deviceInfoInterval = setInterval(() => {
+            if (this._onDashboard) this._fetchDeviceInfo();
+        }, 5000);
+    }
+
+    /** Stops the device-info polling interval. */
+    _stopDeviceInfoPolling() {
+        if (this._deviceInfoInterval !== null) {
+            clearInterval(this._deviceInfoInterval);
+            this._deviceInfoInterval = null;
+        }
+    }
+
+    /**
+     * Sends a request_capture message to the server, triggering the
+     * MediaProjection permission flow on the phone.
+     */
+    requestCapture() {
+        if (this._ws && this._ws.readyState === WebSocket.OPEN) {
+            this._send({ type: 'request_capture' });
+        }
     }
 
     // ── WebSocket connection ────────────────────────────────────────────
@@ -449,23 +482,50 @@ class ScrcpyWeb {
 
         ws.onopen = () => {
             this._reconnectDelay = 1000;
-            this._initMSEPlayer();
+            if (this._onDashboard) {
+                // On the dashboard: don't init MSE yet — wait for user to click Start.
+                this._updateConnectionUI('dashboard_ready');
+            } else {
+                // Reconnecting while already in mirror mode.
+                this._initMSEPlayer();
+            }
         };
 
         ws.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer) {
+                // First binary frame while on dashboard triggers MSE init and transition.
+                if (this._onDashboard) {
+                    this._onDashboard = false;
+                    this._stopDeviceInfoPolling();
+                    this._initMSEPlayer();
+                    this._updateConnectionUI('connected');
+                }
                 this._handleBinaryMessage(event.data);
             } else {
                 try {
                     const msg = JSON.parse(event.data);
-                    if (msg.type === 'permission_needed') {
-                        this._updateConnectionUI('permission_needed');
-                    } else if (msg.type === 'capture_stopped') {
-                        // Capture is already stopped — no point waiting for a keyframe.
-                        this._clearKeyframeTimer();
-                        this._setCaptureStopped(true);
-                    } else if (msg.type === 'capture_started') {
-                        this._setCaptureStopped(false);
+                    switch (msg.type) {
+                        case 'capture_starting':
+                            this._updateConnectionUI('capture_starting');
+                            break;
+                        case 'capture_started':
+                            this._setCaptureStopped(false);
+                            break;
+                        case 'capture_stopped':
+                            this._clearKeyframeTimer();
+                            if (this._onDashboard) {
+                                // Still on dashboard — just update status.
+                                this._updateConnectionUI('dashboard_ready');
+                            } else {
+                                this._setCaptureStopped(true);
+                            }
+                            break;
+                        case 'capture_failed':
+                            this._updateConnectionUI('capture_failed');
+                            break;
+                        case 'permission_needed':
+                            this._updateConnectionUI('permission_needed');
+                            break;
                     }
                 } catch (_) { /* ignore malformed text */ }
             }
@@ -475,8 +535,10 @@ class ScrcpyWeb {
 
         ws.onclose = () => {
             this._teardownMSE();
-            document.getElementById('connection-status').className = 'status-dot disconnected';
-            document.getElementById('connection-status-label').textContent = 'Disconnected';
+            if (!this._onDashboard) {
+                document.getElementById('connection-status').className = 'status-dot disconnected';
+                document.getElementById('connection-status-label').textContent = 'Disconnected';
+            }
             this._scheduleReconnect();
         };
     }
@@ -508,7 +570,11 @@ class ScrcpyWeb {
      * Schedules a reconnect attempt with exponential backoff (max 5 seconds).
      */
     _scheduleReconnect() {
-        this._updateConnectionUI('disconnected');
+        if (this._onDashboard) {
+            this._updateConnectionUI('connecting');
+        } else {
+            this._updateConnectionUI('disconnected');
+        }
         setTimeout(() => this._connect(), this._reconnectDelay);
         this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, 5000);
     }
@@ -1080,52 +1146,100 @@ class ScrcpyWeb {
     // ── Connection UI ────────────────────────────────────────────────────
 
     /**
-     * Transitions between the connection, mirror, and permission screens.
+     * Transitions between the dashboard and mirror screens, updating
+     * dashboard status indicators as appropriate.
      *
-     * @param {'connecting'|'connected'|'permission_needed'|'disconnected'} state
+     * @param {'connecting'|'dashboard_ready'|'capture_starting'|'connected'|'capture_failed'|'permission_needed'|'disconnected'} state
      */
     _updateConnectionUI(state) {
-        const connectionScreen = document.getElementById('connection-screen');
-        const mirrorScreen     = document.getElementById('mirror-screen');
-        const permissionScreen = document.getElementById('permission-screen');
-        const statusText       = document.getElementById('connect-status-text');
+        const dashboardScreen = document.getElementById('dashboard-screen');
+        const mirrorScreen    = document.getElementById('mirror-screen');
+        const statusDot       = document.getElementById('dash-status-dot');
+        const statusText      = document.getElementById('dash-status-text');
+        const startBtn        = document.getElementById('btn-start-mirroring');
+        const hint            = document.getElementById('dash-hint');
 
         const hide = (...els) => els.forEach(el => { el.classList.add('hidden'); el.classList.remove('active'); });
         const show = (el)     => { el.classList.remove('hidden'); el.classList.add('active'); };
 
         switch (state) {
             case 'connecting':
-                statusText.textContent = 'Connecting…';
-                show(connectionScreen); hide(mirrorScreen, permissionScreen);
+                show(dashboardScreen); hide(mirrorScreen);
+                statusDot.className = 'status-dot';
+                statusText.textContent = 'Connecting...';
+                startBtn.disabled = true;
+                hint.textContent = '';
+                break;
+            case 'dashboard_ready':
+                show(dashboardScreen); hide(mirrorScreen);
+                statusDot.className = 'status-dot connected';
+                statusText.textContent = 'Ready';
+                startBtn.disabled = false;
+                hint.textContent = '';
+                break;
+            case 'capture_starting':
+                show(dashboardScreen); hide(mirrorScreen);
+                statusDot.className = 'status-dot connected';
+                statusText.textContent = 'Starting capture...';
+                startBtn.disabled = true;
+                hint.textContent = '';
                 break;
             case 'connected':
-                hide(connectionScreen, permissionScreen);
+                hide(dashboardScreen);
                 show(mirrorScreen);
                 this._initInputHandlers();
                 break;
+            case 'capture_failed':
+                show(dashboardScreen); hide(mirrorScreen);
+                statusDot.className = 'status-dot disconnected';
+                statusText.textContent = 'Capture failed';
+                startBtn.disabled = false;
+                hint.textContent = 'Could not start capture. Tap the button to try again.';
+                break;
             case 'permission_needed':
-                hide(connectionScreen, mirrorScreen);
-                show(permissionScreen);
+                show(dashboardScreen); hide(mirrorScreen);
+                statusDot.className = 'status-dot disconnected';
+                statusText.textContent = 'Permission needed';
+                startBtn.disabled = false;
+                hint.textContent = 'Please tap Allow on your phone when prompted.';
                 break;
             case 'disconnected':
-                statusText.textContent = 'Reconnecting…';
-                hide(mirrorScreen, permissionScreen);
-                show(connectionScreen);
+                show(dashboardScreen); hide(mirrorScreen);
+                statusDot.className = 'status-dot disconnected';
+                statusText.textContent = 'Reconnecting...';
+                startBtn.disabled = true;
+                hint.textContent = '';
                 break;
         }
     }
 
     // ── Device info ──────────────────────────────────────────────────────
 
-    /** Fetches and displays device metadata from /api/device-info. */
+    /**
+     * Fetches device metadata from /api/device-info and updates
+     * the dashboard card with model, Android version, battery, IP,
+     * and service status indicators.
+     */
     async _fetchDeviceInfo() {
         try {
             const res = await fetch('/api/device-info');
             if (!res.ok) return;
             const info = await res.json();
-            const el = document.getElementById('device-info');
-            el.textContent = `${info.model} · Android ${info.androidVersion}`;
-            el.classList.remove('hidden');
+
+            const setTxt = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+            setTxt('dash-device-model', info.model ?? '--');
+            setTxt('dash-android-version', info.androidVersion ?? '--');
+            setTxt('dash-battery', info.batteryLevel >= 0 ? `${info.batteryLevel}%` : '--');
+            setTxt('dash-ip', info.ipAddress ?? '--');
+
+            // Accessibility service badge
+            const badge = document.getElementById('dash-accessibility-badge');
+            if (badge) {
+                badge.classList.toggle('enabled', !!info.isAccessibilityEnabled);
+            }
         } catch (_) { /* server may not be ready yet */ }
     }
 
@@ -1135,7 +1249,7 @@ class ScrcpyWeb {
      */
     async _requestCapture() {
         if (this._ws && this._ws.readyState === WebSocket.OPEN) {
-            this._send({ type: 'restart_capture' });
+            this._send({ type: 'request_capture' });
         } else {
             try {
                 await fetch('/api/start-capture', { method: 'POST' });
@@ -1236,11 +1350,16 @@ class ScrcpyWeb {
 // ── Bootstrap ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     const app = new ScrcpyWeb();
-    document.getElementById('btn-request-capture')?.addEventListener('click', () => {
-        app._requestCapture();
+
+    // Dashboard "Start Mirroring" button.
+    document.getElementById('btn-start-mirroring')?.addEventListener('click', () => {
+        app.requestCapture();
     });
-    // "Restart Capture" button on the capture-stopped overlay.
+
+    // "Restart Capture" button on the capture-stopped overlay —
+    // uses the full request_capture flow (with auto-tap) rather than
+    // restart_capture which only works with a valid saved token.
     document.getElementById('btn-restart-capture')?.addEventListener('click', () => {
-        app._requestCapture();
+        app.requestCapture();
     });
 });
