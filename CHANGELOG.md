@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.7] - 2026-04-07
+
+### Fixed
+- **Multi-step MediaProjection consent dialogs:** Auto-tap now handles OEM variants like Samsung One UI that show a 2-step dialog (select share mode → "Next" → "Allow"). Added debounce guard to prevent redundant processing of rapid `TYPE_WINDOW_CONTENT_CHANGED` events. Supports additional button text variants: "Next", "다음", "Start", "시작", "Entire screen", "전체 화면".
+- **OEM compatibility:** Removed package name filter restriction (`com.android.systemui`), allowing the service to detect system dialogs across OEM variants (Samsung, Pixel, AOSP).
+
 ## [2.1.6] - 2026-04-07
 
 ### Added

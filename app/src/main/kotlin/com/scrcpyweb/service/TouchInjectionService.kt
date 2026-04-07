@@ -26,12 +26,15 @@ class TouchInjectionService : AccessibilityService() {
     private val autoTapHandler = Handler(Looper.getMainLooper())
 
     /**
-     * When true, [onAccessibilityEvent] will attempt to find and click the
-     * "Allow" button on the MediaProjection consent dialog. One-shot: resets
-     * to false after a successful click or after a 10-second timeout.
+     * When true, [onAccessibilityEvent] will attempt to auto-tap through the
+     * MediaProjection consent dialog. Resets to false after the final
+     * confirmation button is clicked or after a 10-second timeout.
      */
     @Volatile
     private var autoTapEnabled = false
+
+    /** Timestamp of the last auto-tap processing attempt, used for debouncing. */
+    private var lastAutoTapAttempt = 0L
 
     override fun onServiceConnected() {
         instance = this
@@ -44,25 +47,39 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Detects the MediaProjection consent dialog and auto-taps "Allow".
+     * Detects the MediaProjection consent dialog and auto-taps through it.
      *
-     * Only active while [autoTapEnabled] is true — set by [enableAutoTap]
-     * when the browser requests capture. Limits itself to windows owned by
-     * `com.android.systemui` to avoid tapping unrelated dialogs.
+     * Handles multi-step dialogs (e.g. Samsung One UI: select share mode →
+     * "Next" → "Allow"). Only active while [autoTapEnabled] is true — set by
+     * [enableAutoTap] when the browser requests capture.
+     *
+     * Accepts events from any system-related package to cover OEM variants
+     * (Samsung, Pixel, AOSP). A debounce guard prevents redundant rapid-fire
+     * processing of [TYPE_WINDOW_CONTENT_CHANGED] events.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         if (!autoTapEnabled) return
+        val eventType = event?.eventType ?: return
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
 
-        val pkg = event.packageName?.toString() ?: return
-        if (pkg != "com.android.systemui") return
+        // Debounce: ignore events firing faster than 300 ms apart.
+        val now = System.currentTimeMillis()
+        if (now - lastAutoTapAttempt < AUTO_TAP_DEBOUNCE_MS) return
+        lastAutoTapAttempt = now
 
         val root = rootInActiveWindow ?: return
         try {
-            if (tryClickAllowButton(root)) {
+            // Priority 1: Final confirmation button — ends the flow.
+            if (tryClickButton(root, FINAL_BUTTON_TEXTS)) {
                 autoTapEnabled = false
                 autoTapHandler.removeCallbacksAndMessages(null)
+                return
             }
+            // Priority 2: "Next" / "다음" button — advances to confirmation step.
+            if (tryClickButton(root, NEXT_BUTTON_TEXTS)) return
+            // Priority 3: Select "Entire screen" option from dropdown (best-effort).
+            tryClickButton(root, ENTIRE_SCREEN_TEXTS)
         } finally {
             root.recycle()
         }
@@ -77,9 +94,10 @@ class TouchInjectionService : AccessibilityService() {
     /**
      * Enables auto-tap mode for the MediaProjection consent dialog.
      *
-     * The service will listen for a `com.android.systemui` window and attempt
-     * to click the "Allow" / "Start now" button. Auto-disables after a
-     * successful click or after a 10-second safety timeout.
+     * The service will listen for system dialog windows and attempt to
+     * auto-tap through all steps (select entire screen → Next → Allow).
+     * Auto-disables after the final confirmation is clicked or after a
+     * 10-second safety timeout.
      */
     fun enableAutoTap() {
         autoTapEnabled = true
@@ -88,18 +106,19 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Traverses the accessibility node tree to find and click the positive
-     * button on the MediaProjection consent dialog.
+     * Searches the accessibility node tree for a node whose text matches one of
+     * the given [texts] and clicks it.
      *
-     * Searches for known button texts across English and Korean locales.
      * If the matching text node is not itself clickable, walks up the parent
-     * chain to find the nearest clickable ancestor.
+     * chain to find the nearest clickable ancestor (e.g. a Button wrapping a
+     * TextView).
      *
-     * @param root Root [AccessibilityNodeInfo] of the active window.
-     * @return True if a button was successfully clicked.
+     * @param root  Root [AccessibilityNodeInfo] of the active window.
+     * @param texts Candidate button labels to search for.
+     * @return True if a matching node was successfully clicked.
      */
-    private fun tryClickAllowButton(root: AccessibilityNodeInfo): Boolean {
-        for (text in ALLOW_BUTTON_TEXTS) {
+    private fun tryClickButton(root: AccessibilityNodeInfo, texts: List<String>): Boolean {
+        for (text in texts) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
             for (node in nodes) {
                 if (node.isClickable) {
@@ -381,10 +400,29 @@ class TouchInjectionService : AccessibilityService() {
         /** Auto-tap safety timeout: disables after 10 seconds to prevent stale taps. */
         private const val AUTO_TAP_TIMEOUT_MS = 10_000L
 
+        /** Minimum interval between auto-tap processing attempts. */
+        private const val AUTO_TAP_DEBOUNCE_MS = 300L
+
         /**
-         * Known button texts for the MediaProjection consent dialog across
-         * Android versions and supported locales (English + Korean).
+         * Final confirmation button texts for the MediaProjection consent
+         * dialog across Android versions and supported locales.
          */
-        private val ALLOW_BUTTON_TEXTS = listOf("Start now", "Allow", "허용", "지금 시작")
+        private val FINAL_BUTTON_TEXTS = listOf(
+            "Start now", "Allow", "Start", "허용", "지금 시작", "시작"
+        )
+
+        /**
+         * Intermediate "Next" button texts for multi-step consent dialogs
+         * (e.g. Samsung One UI shows a share-mode chooser before confirmation).
+         */
+        private val NEXT_BUTTON_TEXTS = listOf("Next", "다음")
+
+        /**
+         * "Entire screen" option texts to select full-screen capture mode
+         * when the dialog defaults to single-app sharing.
+         */
+        private val ENTIRE_SCREEN_TEXTS = listOf(
+            "Entire screen", "전체 화면", "전체 화면 공유"
+        )
     }
 }
