@@ -5,7 +5,8 @@
       "Bash(python3 -c \":*)",
       "Bash(powershell -command \"\\(Get-Content -Encoding Byte gradle/wrapper/gradle-wrapper.jar -TotalCount 4 | ForEach-Object { ''{0:X2}'' -f $_}\\) -join '' ''\")",
       "Bash(jar tf:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Skill(tag-push)"
     ]
   }
 }

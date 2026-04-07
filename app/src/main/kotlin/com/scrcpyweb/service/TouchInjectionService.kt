@@ -7,8 +7,10 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 
 /**
  * Accessibility service responsible for injecting remote touch gestures,
@@ -68,17 +70,56 @@ class TouchInjectionService : AccessibilityService() {
         if (now - lastAutoTapAttempt < AUTO_TAP_DEBOUNCE_MS) return
         lastAutoTapAttempt = now
 
-        val root = rootInActiveWindow ?: return
-        try {
-            // Primary: find the cancel button, then click its non-cancel sibling.
-            // Works regardless of the positive button's text.
-            if (tryClickPositiveButton(root)) return
-            // Fallback: match known positive button texts directly, in case
-            // the dialog layout doesn't pair cancel/positive as siblings.
-            tryClickButtonByText(root, KNOWN_POSITIVE_TEXTS)
-        } finally {
-            root.recycle()
+        Log.d(TAG, "onAccessibilityEvent: type=${event.eventType}, pkg=${event.packageName}")
+
+        // Try the active window first, then scan all interactive windows.
+        // On some OEMs (Samsung One UI), the system consent dialog lives in
+        // a separate window that may not be the "active" one.
+        for (root in collectWindowRoots()) {
+            try {
+                if (tryClickPositiveButton(root)) {
+                    Log.d(TAG, "Clicked positive button via cancel-sibling")
+                    return
+                }
+                if (tryClickButtonByText(root, KNOWN_POSITIVE_TEXTS)) {
+                    Log.d(TAG, "Clicked positive button via text fallback")
+                    return
+                }
+            } finally {
+                root.recycle()
+            }
         }
+        Log.d(TAG, "No clickable button found in any window")
+    }
+
+    /**
+     * Collects root [AccessibilityNodeInfo] nodes from all interactive windows.
+     *
+     * Returns the active window's root first (most likely to contain the dialog),
+     * followed by roots from other interactive windows. Uses the [windows] API
+     * (requires [flagRetrieveInteractiveWindows][android.accessibilityservice.AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS]).
+     */
+    private fun collectWindowRoots(): List<AccessibilityNodeInfo> {
+        val roots = mutableListOf<AccessibilityNodeInfo>()
+        val activeRoot = rootInActiveWindow
+        if (activeRoot != null) roots.add(activeRoot)
+
+        try {
+            for (window in windows) {
+                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
+                    window.type != AccessibilityWindowInfo.TYPE_SYSTEM) continue
+                val root = window.root ?: continue
+                // Skip if we already have this root (the active window).
+                if (activeRoot != null && root == activeRoot) {
+                    root.recycle()
+                    continue
+                }
+                roots.add(root)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to enumerate windows: ${e.message}")
+        }
+        return roots
     }
 
     override fun onInterrupt() = Unit
@@ -96,9 +137,13 @@ class TouchInjectionService : AccessibilityService() {
      * 10-second safety timeout expires.
      */
     fun enableAutoTap() {
+        Log.d(TAG, "enableAutoTap: armed for ${AUTO_TAP_TIMEOUT_MS}ms")
         autoTapEnabled = true
         autoTapHandler.removeCallbacksAndMessages(null)
-        autoTapHandler.postDelayed({ autoTapEnabled = false }, AUTO_TAP_TIMEOUT_MS)
+        autoTapHandler.postDelayed({
+            autoTapEnabled = false
+            Log.d(TAG, "enableAutoTap: timeout expired")
+        }, AUTO_TAP_TIMEOUT_MS)
     }
 
     /**
@@ -452,6 +497,8 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     companion object {
+        private const val TAG = "TouchInjection"
+
         /** Singleton reference set when the service connects, cleared on unbind. */
         @Volatile
         var instance: TouchInjectionService? = null

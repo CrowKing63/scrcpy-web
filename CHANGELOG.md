@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.9] - 2026-04-07
+
+### Fixed
+- **Auto-tap not finding system dialog on separate window:** On some OEMs (Samsung One UI), the MediaProjection consent dialog appears in a separate interactive window rather than the app's active window. Added `flagRetrieveInteractiveWindows` to accessibility config and `collectWindowRoots()` method to scan all interactive system windows. Now searches for the button across all accessible windows instead of only `rootInActiveWindow`.
+- **Missing debug logging for auto-tap troubleshooting:** Added debug logs at `enableAutoTap()` and in `onAccessibilityEvent()` flow so auto-tap behavior can be traced in logcat (`adb logcat -s TouchInjection`) for easier debugging on different OEM devices.
+
 ## [2.1.8] - 2026-04-07
 
 ### Fixed
