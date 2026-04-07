@@ -3,7 +3,10 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
-## [Unreleased]
+## [2.1.12] - 2026-04-07
+
+### Added
+- **Samsung One UI multi-step auto-tap:** The accessibility service now automatically selects the "전체 화면 공유" (Full screen) share mode in Samsung's multi-step MediaProjection consent dialog, then clicks the confirmation button. This enables a truly one-tap experience for users on Galaxy devices.
 
 ## [2.1.11] - 2026-04-07
 

@@ -39,6 +39,14 @@ class TouchInjectionService : AccessibilityService() {
     /** Timestamp of the last auto-tap processing attempt, used for debouncing. */
     private var lastAutoTapAttempt = 0L
 
+    /**
+     * Tracks whether the full-screen share mode option has been selected in the
+     * Samsung One UI MediaProjection consent dialog. Reset each time [enableAutoTap]
+     * is called so that each new mirroring session starts fresh.
+     */
+    @Volatile
+    private var fullScreenModeSelected = false
+
     override fun onServiceConnected() {
         instance = this
     }
@@ -73,11 +81,27 @@ class TouchInjectionService : AccessibilityService() {
 
         Log.d(TAG, "onAccessibilityEvent: type=${event.eventType}, pkg=${event.packageName}")
 
-        // Try the active window first, then scan all interactive windows.
+        // Collect all interactive window roots once and reuse across both steps.
         // On some OEMs (Samsung One UI), the system consent dialog lives in
         // a separate window that may not be the "active" one.
-        for (root in collectWindowRoots()) {
-            try {
+        val roots = collectWindowRoots()
+        try {
+            // Step 1: On Samsung One UI, the MediaProjection dialog shows a share-mode
+            // selector ("앱 하나 공유" selected by default). Select "전체 화면 공유"
+            // first, then wait for the next event before clicking the confirm button.
+            if (!fullScreenModeSelected) {
+                for (root in roots) {
+                    if (trySelectFullScreenMode(root)) {
+                        fullScreenModeSelected = true
+                        Log.d(TAG, "Selected full-screen share mode")
+                        return
+                    }
+                }
+                // "전체 화면 공유" not found — not a Samsung-style dialog, fall through.
+            }
+
+            // Step 2: Click the positive (confirm / next / allow) button.
+            for (root in roots) {
                 if (tryClickPositiveButton(root)) {
                     Log.d(TAG, "Clicked positive button via cancel-sibling")
                     return
@@ -86,11 +110,11 @@ class TouchInjectionService : AccessibilityService() {
                     Log.d(TAG, "Clicked positive button via text fallback")
                     return
                 }
-            } finally {
-                root.recycle()
             }
+            Log.d(TAG, "No clickable button found in any window")
+        } finally {
+            roots.forEach { it.recycle() }
         }
-        Log.d(TAG, "No clickable button found in any window")
     }
 
     /**
@@ -140,6 +164,7 @@ class TouchInjectionService : AccessibilityService() {
     fun enableAutoTap() {
         Log.d(TAG, "enableAutoTap: armed for ${AUTO_TAP_TIMEOUT_MS}ms")
         autoTapEnabled = true
+        fullScreenModeSelected = false
         autoTapHandler.removeCallbacksAndMessages(null)
         autoTapHandler.postDelayed({
             autoTapEnabled = false
@@ -188,6 +213,41 @@ class TouchInjectionService : AccessibilityService() {
                 }
             }
             cancelNodes.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    /**
+     * Attempts to click the "전체 화면 공유" (full screen) list item in the
+     * Samsung One UI MediaProjection share-mode dialog.
+     *
+     * Samsung's consent dialog presents a share-mode selector with "앱 하나 공유"
+     * selected by default. This method finds the full-screen option by exact text
+     * match and clicks its nearest clickable ancestor.
+     *
+     * @param root Root [AccessibilityNodeInfo] to search in.
+     * @return True if the full-screen option was found and clicked.
+     */
+    private fun trySelectFullScreenMode(root: AccessibilityNodeInfo): Boolean {
+        for (text in FULL_SCREEN_SHARE_TEXTS) {
+            val nodes = root.findAccessibilityNodeInfosByText(text)
+            for (node in nodes) {
+                val nodeText = node.text?.toString()?.trim() ?: ""
+                if (!nodeText.equals(text, ignoreCase = true)) {
+                    node.recycle()
+                    continue
+                }
+                val clickable = findClickableAncestor(node)
+                node.recycle()
+                nodes.forEach { it.recycle() }
+                if (clickable != null) {
+                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    clickable.recycle()
+                    return clicked
+                }
+                return false
+            }
+            nodes.forEach { it.recycle() }
         }
         return false
     }
@@ -555,6 +615,15 @@ class TouchInjectionService : AccessibilityService() {
 
         /** Minimum interval between auto-tap processing attempts. */
         private const val AUTO_TAP_DEBOUNCE_MS = 300L
+
+        /**
+         * Full-screen share mode option texts in the Samsung One UI MediaProjection
+         * consent dialog. The dialog shows a share-mode list with "앱 하나 공유"
+         * pre-selected; clicking one of these texts switches to full-screen mode.
+         */
+        private val FULL_SCREEN_SHARE_TEXTS = listOf(
+            "전체 화면 공유", "전체화면 공유", "Entire screen", "Full screen"
+        )
 
         /**
          * Cancel/deny button texts used as anchors to locate the positive
