@@ -47,6 +47,14 @@ class TouchInjectionService : AccessibilityService() {
     @Volatile
     private var fullScreenModeSelected = false
 
+    /**
+     * Tracks whether the share-mode dropdown has been opened in the
+     * Samsung One UI MediaProjection consent dialog (Android 16+).
+     * Reset each time [enableAutoTap] is called.
+     */
+    @Volatile
+    private var dropDownOpened = false
+
     override fun onServiceConnected() {
         instance = this
     }
@@ -86,18 +94,33 @@ class TouchInjectionService : AccessibilityService() {
         // a separate window that may not be the "active" one.
         val roots = collectWindowRoots()
         try {
-            // Step 1: On Samsung One UI, the MediaProjection dialog shows a share-mode
-            // selector ("앱 하나 공유" selected by default). Select "전체 화면 공유"
-            // first, then wait for the next event before clicking the confirm button.
+            // Step 1: On Samsung One UI (Android 16+), the MediaProjection dialog
+            // shows a collapsed dropdown for share mode selection.
+            // 1a) Tap the default option ("앱 하나 공유") to open the dropdown.
+            // 1b) After dropdown opens, tap "전체 화면 공유" to select it.
+            // 2)  Click the positive (confirm / next / allow) button.
             if (!fullScreenModeSelected) {
-                for (root in roots) {
-                    if (trySelectFullScreenMode(root)) {
-                        fullScreenModeSelected = true
-                        Log.d(TAG, "Selected full-screen share mode")
-                        return
+                if (!dropDownOpened) {
+                    // 1a) Open the dropdown by tapping the default option text.
+                    for (root in roots) {
+                        if (tryOpenShareModeDropdown(root)) {
+                            dropDownOpened = true
+                            Log.d(TAG, "Opened share mode dropdown")
+                            return
+                        }
                     }
+                    // Dropdown trigger not found — not a Samsung-style dialog, fall through.
+                } else {
+                    // 1b) Dropdown is open — select "전체 화면 공유".
+                    for (root in roots) {
+                        if (trySelectFullScreenMode(root)) {
+                            fullScreenModeSelected = true
+                            Log.d(TAG, "Selected full-screen share mode")
+                            return
+                        }
+                    }
+                    // "전체 화면 공유" not found — fall through to positive button.
                 }
-                // "전체 화면 공유" not found — not a Samsung-style dialog, fall through.
             }
 
             // Step 2: Click the positive (confirm / next / allow) button.
@@ -165,6 +188,7 @@ class TouchInjectionService : AccessibilityService() {
         Log.d(TAG, "enableAutoTap: armed for ${AUTO_TAP_TIMEOUT_MS}ms")
         autoTapEnabled = true
         fullScreenModeSelected = false
+        dropDownOpened = false
         autoTapHandler.removeCallbacksAndMessages(null)
         autoTapHandler.postDelayed({
             autoTapEnabled = false
@@ -213,6 +237,42 @@ class TouchInjectionService : AccessibilityService() {
                 }
             }
             cancelNodes.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    /**
+     * Attempts to open the share-mode dropdown in the Samsung One UI
+     * MediaProjection consent dialog (Android 16+).
+     *
+     * On Android 16+, Samsung changed the share mode selector from a
+     * radio-button list to a collapsed dropdown. The dropdown shows the
+     * currently selected option ("앱 하나 공유") by default. Tapping this
+     * text opens the dropdown to reveal all options.
+     *
+     * @param root Root [AccessibilityNodeInfo] to search in.
+     * @return True if the dropdown trigger was found and clicked.
+     */
+    private fun tryOpenShareModeDropdown(root: AccessibilityNodeInfo): Boolean {
+        for (text in DEFAULT_SHARE_MODE_TEXTS) {
+            val nodes = root.findAccessibilityNodeInfosByText(text)
+            for (node in nodes) {
+                val nodeText = node.text?.toString()?.trim() ?: ""
+                if (!nodeText.equals(text, ignoreCase = true)) {
+                    node.recycle()
+                    continue
+                }
+                val clickable = findClickableAncestor(node)
+                node.recycle()
+                nodes.forEach { it.recycle() }
+                if (clickable != null) {
+                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    clickable.recycle()
+                    return clicked
+                }
+                return false
+            }
+            nodes.forEach { it.recycle() }
         }
         return false
     }
@@ -623,6 +683,15 @@ class TouchInjectionService : AccessibilityService() {
          */
         private val FULL_SCREEN_SHARE_TEXTS = listOf(
             "전체 화면 공유", "전체화면 공유", "Entire screen", "Full screen"
+        )
+
+        /**
+         * Default share-mode option texts shown in the collapsed dropdown
+         * of the Samsung One UI MediaProjection consent dialog (Android 16+).
+         * Tapping this text opens the dropdown to reveal all share mode options.
+         */
+        private val DEFAULT_SHARE_MODE_TEXTS = listOf(
+            "앱 하나 공유", "Single app", "App only"
         )
 
         /**

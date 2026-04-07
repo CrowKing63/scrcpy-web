@@ -3,6 +3,13 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [Unreleased]
+
+## [2.1.13] - 2026-04-07
+
+### Fixed
+- **Samsung One UI Android 16+ MediaProjection dropdown:** The auto-tap service now handles the new collapsed share-mode dropdown by clicking the default "앱 하나 공유" (Single app) label to reveal the "전체 화면 공유" (Full screen) option before selection. This ensures consistent one-tap mirroring on devices with the updated system UI.
+
 ## [2.1.12] - 2026-04-07
 
 ### Added
