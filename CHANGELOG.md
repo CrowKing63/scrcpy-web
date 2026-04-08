@@ -5,6 +5,12 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.14] - 2026-04-08
+
+### Fixed
+- **MediaProjection dialog troubleshooting:** Added detailed window enumeration and bounds logging to `TouchInjectionService` to help debug auto-tap failures on devices with non-standard window layouts.
+- **Samsung One UI share-mode selection:** Refined the multi-step click logic for Samsung's Android 16+ share-mode dropdown to ensure more reliable selection of "Full screen" mode.
+
 ## [2.1.13] - 2026-04-07
 
 ### Fixed

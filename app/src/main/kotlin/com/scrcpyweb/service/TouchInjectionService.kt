@@ -93,6 +93,17 @@ class TouchInjectionService : AccessibilityService() {
         // On some OEMs (Samsung One UI), the system consent dialog lives in
         // a separate window that may not be the "active" one.
         val roots = collectWindowRoots()
+        Log.d(TAG, "Collected ${roots.size} window roots for processing")
+        
+        // Log details about each window for debugging
+        for (i in roots.indices) {
+            val root = roots[i]
+            val bounds = Rect()
+            root.getBoundsInScreen(bounds)
+            Log.d(TAG, "Window $root: bounds=${bounds}, package=${root.packageName}")
+            root.recycle()
+        }
+
         try {
             // Step 1: On Samsung One UI (Android 16+), the MediaProjection dialog
             // shows a collapsed dropdown for share mode selection.
@@ -197,16 +208,16 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Finds the cancel/deny button in the dialog and clicks its sibling —
-     * the positive action button. This approach is resilient to OEM and locale
-     * variations in positive button text ("Next", "Allow", "화면 공유", etc.).
-     *
-     * The cancel button text is highly consistent across Android variants,
-     * making it a reliable anchor to locate the button pair.
-     *
-     * @param root Root [AccessibilityNodeInfo] of the active window.
-     * @return True if a positive button was found and clicked.
-     */
+      * Finds the cancel/deny button in the dialog and clicks its sibling —
+      * the positive action button. This approach is resilient to OEM and locale
+      * variations in positive button text ("Next", "Allow", "화면 공유", etc.).
+      *
+      * The cancel button text is highly consistent across Android variants,
+      * making it a reliable anchor to locate the button pair.
+      *
+      * @param root Root [AccessibilityNodeInfo] of the active window.
+      * @return True if a positive button was found and clicked.
+      */
     private fun tryClickPositiveButton(root: AccessibilityNodeInfo): Boolean {
         for (cancelText in CANCEL_BUTTON_TEXTS) {
             val cancelNodes = root.findAccessibilityNodeInfosByText(cancelText)
@@ -215,6 +226,8 @@ class TouchInjectionService : AccessibilityService() {
                 if (cancelBtn != null) {
                     val cancelRect = Rect()
                     cancelBtn.getBoundsInScreen(cancelRect)
+                    Log.d(TAG, "Found cancel button: '$cancelText' at ${cancelRect}")
+                    
                     // Search the entire tree for a clickable non-cancel node
                     // vertically aligned with the cancel button (same row).
                     // This reliably skips dropdowns, toggles, and other UI
@@ -223,15 +236,29 @@ class TouchInjectionService : AccessibilityService() {
                     if (positive != null) {
                         val positiveRect = Rect()
                         positive.getBoundsInScreen(positiveRect)
-                        Log.d(TAG, "Positive button at y=${positiveRect.top}, " +
+                        Log.d(TAG, "Found positive button at y=${positiveRect.top}, " +
                                 "cancel at y=${cancelRect.top}")
                         val clicked = positive.performAction(
-                            AccessibilityNodeInfo.ACTION_CLICK
+                                AccessibilityNodeInfo.ACTION_CLICK
                         )
                         positive.recycle()
                         cancelBtn.recycle()
                         cancelNodes.forEach { it.recycle() }
                         return clicked
+                    } else {
+                        Log.d(TAG, "No aligned positive button found for cancel at ${cancelRect}")
+                        // Fallback: try to find any clickable button nearby
+                        val fallbackPositive = findAnyClickableButtonNearby(root, cancelRect)
+                        if (fallbackPositive != null) {
+                            Log.d(TAG, "Using fallback positive button")
+                            val clicked = fallbackPositive.performAction(
+                                    AccessibilityNodeInfo.ACTION_CLICK
+                            )
+                            fallbackPositive.recycle()
+                            cancelBtn.recycle()
+                            cancelNodes.forEach { it.recycle() }
+                            return clicked
+                        }
                     }
                     cancelBtn.recycle()
                 }
@@ -313,15 +340,15 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
-     * Recursively searches the node tree for a clickable, non-cancel node
-     * whose vertical centre is within one button-height of [cancelRect]'s
-     * vertical centre. This ensures only elements in the same button row
-     * are matched, skipping dropdowns and other controls above the buttons.
-     *
-     * @param node       Current node in the traversal (not recycled).
-     * @param cancelRect Screen bounds of the cancel button.
-     * @return A matching clickable node, or null.
-     */
+      * Recursively searches the node tree for a clickable, non-cancel node
+      * whose vertical centre is within one button-height of [cancelRect]'s
+      * vertical centre. This ensures only elements in the same button row
+      * are matched, skipping dropdowns and other controls above the buttons.
+      *
+      * @param node       Current node in the traversal (not recycled).
+      * @param cancelRect Screen bounds of the cancel button.
+      * @return A matching clickable node, or null.
+      */
     private fun findClickableAlignedWith(
         node: AccessibilityNodeInfo,
         cancelRect: Rect
@@ -340,6 +367,60 @@ class TouchInjectionService : AccessibilityService() {
             }
             val result = findClickableAlignedWith(child, cancelRect)
             if (result != null) { child.recycle(); return result }
+            child.recycle()
+        }
+        return null
+    }
+
+    /**
+      * Fallback method to find any clickable button near the cancel button
+      * when the aligned search fails. Looks for clickable nodes within
+      * a reasonable distance (2x button height) of the cancel button.
+      *
+      * @param root       Root node to search in.
+      * @param cancelRect Screen bounds of the cancel button.
+      * @return A clickable button node, or null.
+      */
+    private fun findAnyClickableButtonNearby(
+        root: AccessibilityNodeInfo,
+        cancelRect: Rect
+    ): AccessibilityNodeInfo? {
+        val cancelCenterY = cancelRect.centerY()
+        val tolerance = cancelRect.height() * 2.0 // Increased tolerance for fallback
+
+        return findClickableNodeWithinTolerance(root, cancelCenterY, tolerance)
+    }
+
+    /**
+      * Helper function to find a clickable node within vertical tolerance of a center Y.
+      *
+      * @param node       Current node in the traversal.
+      * @param targetCenterY Target Y coordinate to match against.
+      * @param tolerance  Vertical tolerance in pixels.
+      * @return A matching clickable node, or null.
+      */
+    private fun findClickableNodeWithinTolerance(
+        node: AccessibilityNodeInfo,
+        targetCenterY: Float,
+        tolerance: Float
+    ): AccessibilityNodeInfo? {
+        // Check current node
+        if (node.isClickable && !matchesCancelText(node)) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            if (Math.abs(bounds.centerY() - targetCenterY) <= tolerance) {
+                return node
+            }
+        }
+
+        // Check children
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findClickableNodeWithinTolerance(child, targetCenterY, tolerance)
+            if (result != null) {
+                child.recycle()
+                return result
+            }
             child.recycle()
         }
         return null
