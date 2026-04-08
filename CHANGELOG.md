@@ -5,6 +5,11 @@ This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [2.1.15] - 2026-04-08
+
+### Fixed
+- **Build failure in TouchInjectionService:** Fixed type mismatch errors (Int/Double to Float) in `findAnyClickableButtonNearby` that caused release build failures in CI.
+
 ## [2.1.14] - 2026-04-08
 
 ### Fixed

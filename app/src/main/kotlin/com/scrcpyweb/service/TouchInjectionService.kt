@@ -385,8 +385,8 @@ class TouchInjectionService : AccessibilityService() {
         root: AccessibilityNodeInfo,
         cancelRect: Rect
     ): AccessibilityNodeInfo? {
-        val cancelCenterY = cancelRect.centerY()
-        val tolerance = cancelRect.height() * 2.0 // Increased tolerance for fallback
+        val cancelCenterY = cancelRect.centerY().toFloat()
+        val tolerance = cancelRect.height() * 2.0f // Increased tolerance for fallback
 
         return findClickableNodeWithinTolerance(root, cancelCenterY, tolerance)
     }
