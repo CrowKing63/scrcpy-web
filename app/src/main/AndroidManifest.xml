@@ -37,7 +37,7 @@
         <!-- Transparent Activity for launching MediaProjection permission from background -->
         <activity
             android:name=".ui.ProjectionRequestActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/Theme.ScrcpyWeb.Transparent" />

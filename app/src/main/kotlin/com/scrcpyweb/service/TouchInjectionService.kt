@@ -65,6 +65,9 @@ class TouchInjectionService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
+    /** Timestamp of the last debug dump to avoid log flooding. */
+    private var lastDebugDumpTime = 0L
+
     /**
      * Detects the MediaProjection consent dialog and auto-taps through it.
      *
@@ -78,74 +81,75 @@ class TouchInjectionService : AccessibilityService() {
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (!autoTapEnabled) return
+        
         val eventType = event?.eventType ?: return
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return
+            eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
+            eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
 
-        // Debounce: ignore events firing faster than 300 ms apart.
         val now = System.currentTimeMillis()
-        if (now - lastAutoTapAttempt < AUTO_TAP_DEBOUNCE_MS) return
+        // Window state changes (like dropdown opening/closing) should be processed instantly.
+        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && 
+            now - lastAutoTapAttempt < 150L) return
         lastAutoTapAttempt = now
 
-        Log.d(TAG, "onAccessibilityEvent: type=${event.eventType}, pkg=${event.packageName}")
-
-        // Collect all interactive window roots once and reuse across both steps.
-        // On some OEMs (Samsung One UI), the system consent dialog lives in
-        // a separate window that may not be the "active" one.
         val roots = collectWindowRoots()
-        Log.d(TAG, "Collected ${roots.size} window roots for processing")
-        
-        // Log details about each window for debugging
-        for (i in roots.indices) {
-            val root = roots[i]
-            val bounds = Rect()
-            root.getBoundsInScreen(bounds)
-            Log.d(TAG, "Window $root: bounds=${bounds}, package=${root.packageName}")
-            root.recycle()
-        }
+        if (roots.isEmpty()) return
 
         try {
-            // Step 1: On Samsung One UI (Android 16+), the MediaProjection dialog
-            // shows a collapsed dropdown for share mode selection.
-            // 1a) Tap the default option ("앱 하나 공유") to open the dropdown.
-            // 1b) After dropdown opens, tap "전체 화면 공유" to select it.
-            // 2)  Click the positive (confirm / next / allow) button.
+            // Step 1: Handle Samsung One UI share mode selection
             if (!fullScreenModeSelected) {
-                if (!dropDownOpened) {
-                    // 1a) Open the dropdown by tapping the default option text.
+                for (root in roots) {
+                    if (trySelectFullScreenMode(root)) {
+                        fullScreenModeSelected = true
+                        Log.d(TAG, "Successfully selected full-screen mode")
+                        // Proceed to Step 2 immediately in the same event if possible
+                        break
+                    }
+                }
+
+                if (!fullScreenModeSelected && !dropDownOpened) {
                     for (root in roots) {
                         if (tryOpenShareModeDropdown(root)) {
                             dropDownOpened = true
-                            Log.d(TAG, "Opened share mode dropdown")
-                            return
+                            Log.d(TAG, "Successfully triggered share mode dropdown")
+                            return 
                         }
                     }
-                    // Dropdown trigger not found — not a Samsung-style dialog, fall through.
-                } else {
-                    // 1b) Dropdown is open — select "전체 화면 공유".
-                    for (root in roots) {
-                        if (trySelectFullScreenMode(root)) {
-                            fullScreenModeSelected = true
-                            Log.d(TAG, "Selected full-screen share mode")
-                            return
-                        }
-                    }
-                    // "전체 화면 공유" not found — fall through to positive button.
                 }
             }
 
-            // Step 2: Click the positive (confirm / next / allow) button.
+            // Step 2: Click the positive (confirm / next / allow / start) button.
             for (root in roots) {
-                if (tryClickPositiveButton(root)) {
-                    Log.d(TAG, "Clicked positive button via cancel-sibling")
+                // 1. Try known Samsung/Android positive button IDs
+                val positiveIds = listOf(
+                    "android:id/button1", 
+                    "com.android.systemui:id/button_start", 
+                    "com.samsung.android.systemui:id/button_start",
+                    "com.samsung.android.systemui:id/button_primary",
+                    "com.android.systemui:id/ok"
+                )
+                for (id in positiveIds) {
+                    if (tryClickButtonById(root, id)) {
+                        Log.d(TAG, "Clicked positive button via ID: $id")
+                        return
+                    }
+                }
+
+                // 2. Try exact text match for "화면 공유" (prioritizing the button)
+                if (tryClickButtonByExactText(root, KNOWN_POSITIVE_TEXTS)) {
+                    Log.d(TAG, "Clicked positive button via exact text")
                     return
                 }
-                if (tryClickButtonByExactText(root, KNOWN_POSITIVE_TEXTS)) {
-                    Log.d(TAG, "Clicked positive button via text fallback")
+
+                // 3. Last resort: Cancel-anchor sibling matching
+                if (tryClickPositiveButton(root)) {
+                    Log.d(TAG, "Clicked positive button via cancel-anchor")
                     return
                 }
             }
-            Log.d(TAG, "No clickable button found in any window")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in auto-tap: ${e.message}")
         } finally {
             roots.forEach { it.recycle() }
         }
@@ -160,16 +164,18 @@ class TouchInjectionService : AccessibilityService() {
      */
     private fun collectWindowRoots(): List<AccessibilityNodeInfo> {
         val roots = mutableListOf<AccessibilityNodeInfo>()
-        val activeRoot = rootInActiveWindow
-        if (activeRoot != null) roots.add(activeRoot)
+        
+        // Root in active window is the most reliable start.
+        rootInActiveWindow?.let { roots.add(it) }
 
         try {
+            // Get all windows to ensure we find dropdowns/popups.
+            // Requires FLAG_RETRIEVE_INTERACTIVE_WINDOWS in service XML/config.
             for (window in windows) {
-                if (window.type != AccessibilityWindowInfo.TYPE_APPLICATION &&
-                    window.type != AccessibilityWindowInfo.TYPE_SYSTEM) continue
                 val root = window.root ?: continue
-                // Skip if we already have this root (the active window).
-                if (activeRoot != null && root == activeRoot) {
+                
+                // If we already have a root for this window ID, skip it.
+                if (roots.any { it.windowId == window.id }) {
                     root.recycle()
                     continue
                 }
@@ -178,7 +184,66 @@ class TouchInjectionService : AccessibilityService() {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to enumerate windows: ${e.message}")
         }
+        
+        Log.d(TAG, "Collected ${roots.size} window roots")
         return roots
+    }
+
+    /**
+     * Attempts to find and click a button by its exact text match.
+     */
+    private fun tryClickButtonByExactText(root: AccessibilityNodeInfo, texts: List<String>): Boolean {
+        for (text in texts) {
+            val nodes = root.findAccessibilityNodeInfosByText(text)
+            for (node in nodes) {
+                val nodeText = node.text?.toString()?.trim() ?: ""
+                // Use truly exact match to avoid clicking list items
+                if (nodeText.equals(text, ignoreCase = true)) {
+                    val clickable = findClickableAncestor(node)
+                    if (clickable != null) {
+                        val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                        if (clicked) {
+                            node.recycle()
+                            nodes.forEach { it.recycle() }
+                            return true
+                        }
+                        clickable.recycle()
+                    }
+                }
+                node.recycle()
+            }
+            nodes.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    /**
+     * Attempts to find and click a button by its resource ID.
+     */
+    private fun tryClickButtonById(root: AccessibilityNodeInfo, resId: String): Boolean {
+        val nodes = root.findAccessibilityNodeInfosByViewId(resId)
+        for (node in nodes) {
+            val clickable = findClickableAncestor(node)
+            if (clickable != null) {
+                val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                if (clicked) {
+                    clickable.recycle()
+                    nodes.forEach { it.recycle() }
+                    return true
+                }
+                clickable.recycle()
+            }
+        }
+        nodes.forEach { it.recycle() }
+        return false
+    }
+
+    /**
+     * Checks if two [AccessibilityNodeInfo] objects represent the same node
+     * by comparing their window and internal IDs.
+     */
+    private fun isSameNode(a: AccessibilityNodeInfo, b: AccessibilityNodeInfo): Boolean {
+        return a.windowId == b.windowId && a == b
     }
 
     override fun onInterrupt() = Unit
@@ -281,25 +346,16 @@ class TouchInjectionService : AccessibilityService() {
      * @return True if the dropdown trigger was found and clicked.
      */
     private fun tryOpenShareModeDropdown(root: AccessibilityNodeInfo): Boolean {
-        for (text in DEFAULT_SHARE_MODE_TEXTS) {
-            val nodes = root.findAccessibilityNodeInfosByText(text)
-            for (node in nodes) {
-                val nodeText = node.text?.toString()?.trim() ?: ""
-                if (!nodeText.equals(text, ignoreCase = true)) {
-                    node.recycle()
-                    continue
-                }
-                val clickable = findClickableAncestor(node)
-                node.recycle()
-                nodes.forEach { it.recycle() }
-                if (clickable != null) {
-                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    clickable.recycle()
-                    return clicked
-                }
-                return false
+        val node = findNodeByText(root, DEFAULT_SHARE_MODE_TEXTS)
+        if (node != null) {
+            val clickable = findClickableAncestor(node)
+            node.recycle()
+            if (clickable != null) {
+                Log.d(TAG, "Opening share mode dropdown via node with text '${clickable.text}'")
+                val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                clickable.recycle()
+                return clicked
             }
-            nodes.forEach { it.recycle() }
         }
         return false
     }
@@ -308,35 +364,51 @@ class TouchInjectionService : AccessibilityService() {
      * Attempts to click the "전체 화면 공유" (full screen) list item in the
      * Samsung One UI MediaProjection share-mode dialog.
      *
-     * Samsung's consent dialog presents a share-mode selector with "앱 하나 공유"
-     * selected by default. This method finds the full-screen option by exact text
-     * match and clicks its nearest clickable ancestor.
-     *
      * @param root Root [AccessibilityNodeInfo] to search in.
      * @return True if the full-screen option was found and clicked.
      */
     private fun trySelectFullScreenMode(root: AccessibilityNodeInfo): Boolean {
-        for (text in FULL_SCREEN_SHARE_TEXTS) {
-            val nodes = root.findAccessibilityNodeInfosByText(text)
-            for (node in nodes) {
-                val nodeText = node.text?.toString()?.trim() ?: ""
-                if (!nodeText.equals(text, ignoreCase = true)) {
-                    node.recycle()
-                    continue
-                }
-                val clickable = findClickableAncestor(node)
-                node.recycle()
-                nodes.forEach { it.recycle() }
-                if (clickable != null) {
-                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    clickable.recycle()
-                    return clicked
-                }
-                return false
+        val node = findNodeByText(root, FULL_SCREEN_SHARE_TEXTS)
+        if (node != null) {
+            val clickable = findClickableAncestor(node)
+            node.recycle()
+            if (clickable != null) {
+                Log.d(TAG, "Selecting full-screen mode via node with text '${clickable.text}'")
+                val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                clickable.recycle()
+                return clicked
             }
-            nodes.forEach { it.recycle() }
         }
         return false
+    }
+
+    /**
+     * Recursively searches for a node that matches any of the given texts.
+     * @param exact If true, uses exact string equality. If false, uses contains.
+     */
+    private fun findNodeByText(
+        node: AccessibilityNodeInfo, 
+        texts: List<String>, 
+        exact: Boolean = false
+    ): AccessibilityNodeInfo? {
+        val nodeText = node.text?.toString()?.trim() ?: ""
+        val match = if (exact) {
+            texts.any { nodeText.equals(it, ignoreCase = true) }
+        } else {
+            texts.any { nodeText.contains(it, ignoreCase = true) }
+        }
+
+        if (match) {
+            return AccessibilityNodeInfo.obtain(node)
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeByText(child, texts, exact)
+            child.recycle()
+            if (result != null) return result
+        }
+        return null
     }
 
     /**
@@ -424,40 +496,6 @@ class TouchInjectionService : AccessibilityService() {
             child.recycle()
         }
         return null
-    }
-
-    /**
-     * Fallback: searches for nodes whose text **exactly** matches one of the
-     * given [texts] and clicks the first match. Exact matching avoids false
-     * positives from substring hits (e.g. "화면 공유" inside "전체 화면 공유").
-     *
-     * @param root  Root [AccessibilityNodeInfo] of the active window.
-     * @param texts Candidate button labels to search for.
-     * @return True if a matching node was successfully clicked.
-     */
-    private fun tryClickButtonByExactText(
-        root: AccessibilityNodeInfo,
-        texts: List<String>
-    ): Boolean {
-        for (text in texts) {
-            val nodes = root.findAccessibilityNodeInfosByText(text)
-            for (node in nodes) {
-                val nodeText = node.text?.toString()?.trim() ?: ""
-                if (!nodeText.equals(text, ignoreCase = true)) {
-                    node.recycle()
-                    continue
-                }
-                val clickable = findClickableAncestor(node)
-                if (clickable != null) {
-                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    clickable.recycle()
-                    nodes.forEach { it.recycle() }
-                    return clicked
-                }
-            }
-            nodes.forEach { it.recycle() }
-        }
-        return false
     }
 
     /**
@@ -693,6 +731,24 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
+     * Recursively dumps the node tree for debugging.
+     */
+    private fun dumpNodeTree(node: AccessibilityNodeInfo?, depth: Int) {
+        if (node == null) return
+        val indent = "  ".repeat(depth)
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+        Log.d(TAG, "${indent}Node: text='${node.text}', desc='${node.contentDescription}', class=${node.className}, " +
+                "clickable=${node.isClickable}, bounds=$bounds, id=${node.viewIdResourceName}")
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i)
+            dumpNodeTree(child, depth + 1)
+            child?.recycle()
+        }
+    }
+
+    /**
      * Maps an Android key code to a printable character.
      *
      * Handles digits (KEYCODE_0–KEYCODE_9), letters (KEYCODE_A–KEYCODE_Z), and space.
@@ -784,13 +840,11 @@ class TouchInjectionService : AccessibilityService() {
         )
 
         /**
-         * Known positive button texts as a fallback when the cancel-anchor
-         * approach fails. Uses exact matching so substring-ambiguous texts
-         * like "화면 공유" are safe (won't match "전체 화면 공유").
+         * Known positive button texts. "화면 공유" is prioritized for Samsung One UI.
          */
         private val KNOWN_POSITIVE_TEXTS = listOf(
-            "Start now", "Allow", "Start", "Next", "Share screen",
-            "허용", "지금 시작", "시작", "다음", "화면 공유"
+            "화면 공유", "지금 시작", "시작", "허용", "다음",
+            "Share screen", "Start now", "Start", "Allow", "Next"
         )
     }
 }

@@ -12,8 +12,8 @@ android {
         applicationId = "com.scrcpyweb"
         minSdk = 29
         targetSdk = 36
-        versionCode = 30
-        versionName = "2.1.15"
+        versionCode = 31
+        versionName = "2.2.0"
     }
 
     signingConfigs {

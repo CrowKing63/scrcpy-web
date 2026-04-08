@@ -3,7 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
-## [Unreleased]
+## [2.2.0] - 2026-04-08
+
+### Changed
+- **Enhanced auto-tap reliability:** Refined system dialog detection and interaction logic in `TouchInjectionService` for better compatibility across OEM devices (Samsung, Pixel, etc.).
+- **Improved MediaProjection request flow:** Updated `ProjectionRequestActivity` and accessibility configurations to ensure more reliable background capture initiation.
 
 ## [2.1.15] - 2026-04-08
 
