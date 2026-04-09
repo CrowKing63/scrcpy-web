@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.2.5] - 2026-04-09
+
+### Fixed
+- **CI Build Reliability:** Switched back to the global `gradle` command in the release workflow (managed by `actions/setup-gradle`) to bypass issues with the local wrapper script execution in the GitHub Actions environment.
+
 ## [2.2.4] - 2026-04-09
 
 ### Fixed
