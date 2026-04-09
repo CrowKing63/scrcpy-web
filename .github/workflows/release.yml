@@ -48,50 +48,55 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
 
-      - name: Download ADB platform-tools (Windows)
+      - name: Download ADB platform-tools (Windows & Mac)
         run: |
-          wget -q https://dl.google.com/android/repository/platform-tools-latest-windows.zip \
-            -O /tmp/platform-tools-windows.zip
+          # Windows
+          wget -q https://dl.google.com/android/repository/platform-tools-latest-windows.zip -O /tmp/platform-tools-windows.zip
           mkdir -p /tmp/adb-win
-          unzip -q /tmp/platform-tools-windows.zip \
-            'platform-tools/adb.exe' \
-            'platform-tools/AdbWinApi.dll' \
-            'platform-tools/AdbWinUsbApi.dll' \
-            -d /tmp/adb-win/ || true
-          # Fallback: extract whatever adb files are present
-          unzip -q /tmp/platform-tools-windows.zip \
-            'platform-tools/adb.exe' \
-            -d /tmp/adb-win/ 2>/dev/null || true
+          unzip -q /tmp/platform-tools-windows.zip 'platform-tools/adb.exe' 'platform-tools/AdbWinApi.dll' 'platform-tools/AdbWinUsbApi.dll' -d /tmp/adb-win/ || true
+          unzip -q /tmp/platform-tools-windows.zip 'platform-tools/adb.exe' -d /tmp/adb-win/ 2>/dev/null || true
 
-      - name: Ensure install.ps1 has UTF-8 BOM (required by PowerShell 5.x)
+          # Mac
+          wget -q https://dl.google.com/android/repository/platform-tools-latest-darwin.zip -O /tmp/platform-tools-macos.zip
+          mkdir -p /tmp/adb-mac
+          unzip -q /tmp/platform-tools-macos.zip 'platform-tools/adb' -d /tmp/adb-mac/
+
+      - name: Ensure installer scripts have correct line endings/BOM
         run: |
+          # install.ps1 needs UTF-8 BOM for some Windows systems
           python3 -c "p='installer/install.ps1';d=open(p,'rb').read();open(p,'wb').write(d if d[:3]==b'\xef\xbb\xbf' else b'\xef\xbb\xbf'+d)"
+          # install.sh should have LF line endings
+          sed -i 's/\r$//' installer/install.sh
 
-      - name: Bundle Windows installer
+      - name: Bundle Installers
         run: |
           TAG="${{ github.ref_name }}"
-          BUNDLE_DIR="bundle"
           APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
           APK_NAME=$(basename "$APK")
 
-          mkdir -p "$BUNDLE_DIR/adb"
+          # --- Windows Bundle ---
+          WIN_DIR="bundle-win"
+          mkdir -p "$WIN_DIR/adb"
+          cp /tmp/adb-win/platform-tools/adb.exe "$WIN_DIR/adb/"
+          cp /tmp/adb-win/platform-tools/AdbWinApi.dll "$WIN_DIR/adb/" 2>/dev/null || true
+          cp /tmp/adb-win/platform-tools/AdbWinUsbApi.dll "$WIN_DIR/adb/" 2>/dev/null || true
+          cp "$APK" "$WIN_DIR/"
+          cp installer/install.bat "$WIN_DIR/"
+          cp installer/install.ps1 "$WIN_DIR/"
+          (cd "$WIN_DIR" && zip -r "../scrcpy-web-${TAG}-windows-installer.zip" .)
 
-          # Copy ADB binaries
-          cp /tmp/adb-win/platform-tools/adb.exe "$BUNDLE_DIR/adb/"
-          cp /tmp/adb-win/platform-tools/AdbWinApi.dll "$BUNDLE_DIR/adb/" 2>/dev/null || true
-          cp /tmp/adb-win/platform-tools/AdbWinUsbApi.dll "$BUNDLE_DIR/adb/" 2>/dev/null || true
+          # --- macOS Bundle ---
+          MAC_DIR="bundle-mac"
+          mkdir -p "$MAC_DIR/adb"
+          cp /tmp/adb-mac/platform-tools/adb "$MAC_DIR/adb/adb_mac"
+          chmod +x "$MAC_DIR/adb/adb_mac"
+          cp "$APK" "$MAC_DIR/"
+          cp installer/install.sh "$MAC_DIR/"
+          chmod +x "$MAC_DIR/install.sh"
+          (cd "$MAC_DIR" && zip -r "../scrcpy-web-${TAG}-macos-installer.zip" .)
 
-          # Copy APK and installer scripts
-          cp "$APK" "$BUNDLE_DIR/"
-          cp installer/install.bat "$BUNDLE_DIR/"
-          cp installer/install.ps1 "$BUNDLE_DIR/"
-
-          # Create zip
-          cd "$BUNDLE_DIR"
-          zip -r "../scrcpy-web-${TAG}-windows-installer.zip" .
-          cd ..
-
-          echo "BUNDLE_ZIP=scrcpy-web-${TAG}-windows-installer.zip" >> $GITHUB_ENV
+          echo "WIN_ZIP=scrcpy-web-${TAG}-windows-installer.zip" >> $GITHUB_ENV
+          echo "MAC_ZIP=scrcpy-web-${TAG}-macos-installer.zip" >> $GITHUB_ENV
           echo "APK_PATH=$APK" >> $GITHUB_ENV
 
       - name: Create GitHub Release
@@ -99,21 +104,30 @@ jobs:
         with:
           files: |
             ${{ env.APK_PATH }}
-            ${{ env.BUNDLE_ZIP }}
+            ${{ env.WIN_ZIP }}
+            ${{ env.MAC_ZIP }}
           generate_release_notes: true
           body: |
             ## Installation
 
-            ### Option A — Windows Installer (Recommended)
-            1. Download `scrcpy-web-${{ github.ref_name }}-windows-installer.zip`
-            2. Extract the zip
-            3. Double-click `install.bat`
-            4. Follow the on-screen steps (supports English, Korean, Japanese, Chinese, Spanish)
+            ### Option A — Guided Installer (Recommended)
 
+            **Windows**:
+            1. Download `${{ env.WIN_ZIP }}`
+            2. Extract and double-click `install.bat`
+
+            **macOS**:
+            1. Download `${{ env.MAC_ZIP }}`
+            2. Extract, open Terminal in the folder, and run:
+               ```bash
+               chmod +x install.sh && ./install.sh
+               ```
+
+            > Supports: English, Korean, Japanese, Chinese, Spanish.
             > Requires Android 11+ for wireless debugging. No USB cable needed.
 
             ### Option B — Manual APK Install
-            Download the `.apk` file and sideload it manually via ADB or a file manager.
+            Download the `.apk` file and sideload it manually.
 
             ---
             See [Installation Guide](https://github.com/${{ github.repository }}/blob/main/docs/installation.md) for detailed instructions.

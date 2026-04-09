@@ -7,29 +7,25 @@ This guide walks you through installing SCRCPY-Web on your Android device wirele
 
 ---
 
-## Option A — Windows Installer (Recommended)
+## Option A — Guided Installer (Recommended)
 
-The Windows installer bundle includes a portable ADB and a guided setup script. No prior ADB knowledge is needed.
+The installer bundles (or discovers) ADB and provides a guided setup script. No prior ADB knowledge is needed.
 
-### Download
-
+### 1. Download & Extract
 1. Go to the [Releases](../../releases) page.
-2. Download `scrcpy-web-vX.Y.Z-windows-installer.zip`.
+2. Download the installer zip for your OS.
 3. Extract the zip to any folder.
 
-The extracted folder contains:
-```
-install.bat          ← double-click to run
-adb/
-  adb.exe
-  AdbWinApi.dll
-  AdbWinUsbApi.dll
-scrcpy-web-vX.Y.Z.apk
-```
+### 2. Run the Installer
 
-### Run the Installer
+**Windows**:
+Double-click `install.bat`.
 
-Double-click `install.bat`. The script will guide you through each step in your chosen language (English, Korean, Japanese, Chinese, Spanish).
+**macOS / Linux**:
+1. Open Terminal in the extracted folder.
+2. Run: `chmod +x install.sh && ./install.sh`
+
+The script will guide you through each step in your chosen language (English, Korean, Japanese, Chinese, Spanish).
 
 **Steps performed by the installer:**
 

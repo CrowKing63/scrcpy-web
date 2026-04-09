@@ -3,6 +3,16 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.0] - 2026-04-09
+
+### Added
+- **Mac/Linux Guided Installer**: New `install.sh` script providing a guided terminal-based installation process for macOS and Linux users, mirroring the Windows installer experience.
+- **Mac ADB Binaries Integration**: CI/CD pipeline now automatically bundles Mac ADB binaries in the release, enabling zero-setup installation for Mac users.
+
+### Changed
+- **Revamped README**: Added Vision Pro screenshot placeholder and quick-access highlights of recent major improvements.
+- **Unified CI/CD Release Workflow**: Updated GitHub Actions to generate both Windows and macOS installer bundles automatically on every release.
+
 ## [2.2.6] - 2026-04-09
 
 ### Fixed

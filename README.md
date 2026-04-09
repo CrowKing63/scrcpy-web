@@ -5,8 +5,17 @@
 
 Mirror and control your Android screen from any browser over local Wi-Fi — no PC required.
 
-> **Primary target**: Apple Vision Pro Safari
-> **Also works in**: Chrome, Edge, Firefox (desktop & mobile)
+![SCRCPY-Web on Apple Vision Pro](https://via.placeholder.com/1200x675?text=Apple+Vision+Pro+Capture+Screenshot+Placeholder)
+*Designed for Apple Vision Pro Safari (Spatial Display)*
+
+---
+
+## Recent Highlights (v2.3.0)
+
+- **Mac/Linux Guided Installer**: New `install.sh` script with Mac ADB binaries for one-click setup.
+- **Samsung One UI Support**: Accessibility service now automatically handles complex multi-step "Full Screen" capture dialogs on Galaxy devices.
+- **Stable Mirroring**: Fixed initialization race conditions (black screen fix) and improved frame synchronization.
+- **Configurable Port**: Specify your custom server port in the app settings.
 
 ---
 
@@ -54,21 +63,22 @@ graph LR
 
 ## Installation
 
-### Windows Installer (Recommended)
+### Guided Installer (Recommended)
 
 No ADB knowledge required — the installer guides you step by step.
 
-1. Download `scrcpy-web-vX.Y.Z-windows-installer.zip` from the [Releases](https://github.com/your-username/scrcpy-web/releases) page.
-2. Extract the zip.
-3. Double-click **`install.bat`**.
-4. Choose your language and follow the on-screen instructions.
+**Windows**:
+1. Download `scrcpy-web-vX.Y.Z-windows-installer.zip` from [Releases](../../releases).
+2. Extract and double-click **`install.bat`**.
 
-> Supports: English, Korean, Japanese, Chinese (Simplified), Spanish.
+**macOS / Linux**:
+1. Download `scrcpy-web-vX.Y.Z-macos-installer.zip` from [Releases](../../releases).
+2. Extract, open Terminal in the folder, and run: `chmod +x install.sh && ./install.sh`.
+
+> Supports: English, Korean, Japanese, Chinese, Spanish.
 > Requires Android 11+ for wireless debugging. No USB cable needed.
 
-The installer will walk you through: enabling Developer Options → Wireless Debugging → pairing → connecting → installing the APK — all automatically.
-
-### Manual Install (macOS / Linux / Advanced)
+### Manual Install (Advanced)
 
 See [docs/installation.md](docs/installation.md) for manual ADB instructions and troubleshooting.
 
