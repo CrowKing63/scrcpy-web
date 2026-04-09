@@ -3,6 +3,12 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.2.4] - 2026-04-09
+
+### Fixed
+- **Stable CI/CD Pipeline:** Fixed a build failure in GitHub Actions by transitioning to the official `gradle-build-action` and ensuring proper execution permissions for the Gradle wrapper.
+- **Improved Windows Shell Compatibility:** Added path conversion logic to the `gradlew` script, fixing "Could not find or load main class" errors when running in POSIX-like environments on Windows (e.g., Git Bash).
+
 ## [2.2.3] - 2026-04-09
 
 ### Added
