@@ -12,18 +12,25 @@ android {
         applicationId = "com.scrcpyweb"
         minSdk = 29
         targetSdk = 36
-        versionCode = 33
-        versionName = "2.2.2"
+        versionCode = 34
+        versionName = "2.2.3"
     }
 
     signingConfigs {
         create("release") {
-            // Replace with your production keystore for release builds.
-            // For CI: set these as GitHub Actions secrets and reference via environment variables.
-            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            val keyFile = System.getenv("RELEASE_KEYSTORE_PATH")?.let { file(it) }
+            if (keyFile?.exists() == true) {
+                storeFile = keyFile
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            } else {
+                // Fallback for local development or CI without secret keys
+                storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
         }
     }
 

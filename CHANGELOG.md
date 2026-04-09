@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.2.3] - 2026-04-09
+
+### Added
+- **Production release signing:** Transitioned from temporary debug keys to a permanent production keystore for GitHub releases. This ensures users can update the application seamlessly without the need for manual re-installation.
+
 ## [2.2.2] - 2026-04-09
 
 ### Added
