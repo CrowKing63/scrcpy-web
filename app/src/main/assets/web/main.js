@@ -408,13 +408,23 @@ class ScrcpyWeb {
             }
         };
         this._waitingHandler = () => {
-            // Video stalled waiting for data — seek to the latest available
-            // frame so playback resumes from the live edge immediately.
+            // Video stalled waiting for data.  Seek toward the live edge if we
+            // have fallen behind, but NEVER seek backward.
+            // The previous unconditional (bufEnd - 0.1) seek replayed the last
+            // ~3 frames in a loop whenever the buffer momentarily ran dry —
+            // visible as a looping status-bar animation on static screens and
+            // as repeatedly replaying transition frames after an app switch.
             const vid = document.getElementById('video-player');
             if (!this._sourceBuffer) return;
             const buf = this._sourceBuffer.buffered;
             if (buf.length > 0) {
-                vid.currentTime = buf.end(buf.length - 1) - 0.1;
+                const bufEnd = buf.end(buf.length - 1);
+                const target = bufEnd - 0.1;
+                if (target > vid.currentTime) {
+                    vid.currentTime = target;
+                }
+                // Safari may not resume automatically after a stall — prompt it.
+                vid.play().catch(() => {});
             }
         };
         this._pointers = new Map();

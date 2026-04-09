@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.4] - 2026-04-09
+
+### Fixed
+- **Frame Repetition Loop (JS root cause fix):** Fixed the `waiting` event handler unconditionally seeking backward by 0.1 s (`bufEnd - 0.1`). When the buffer momentarily ran dry, the handler rewound `currentTime` into the last 3 frames of the previous content (e.g. a screen-transition animation), which immediately hit the buffer edge again, retriggering `waiting` and creating a visible frame-repetition loop. The fix: only seek forward to the live edge when `currentTime` is already behind it — never seek backward. Also adds an explicit `play()` call to prompt Safari to resume after a stall.
+
 ## [2.3.3] - 2026-04-09
 
 ### Fixed
