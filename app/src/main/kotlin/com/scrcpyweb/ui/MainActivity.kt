@@ -10,6 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.slider.Slider
+import androidx.core.widget.doAfterTextChanged
+import com.google.android.material.textfield.TextInputEditText
 import com.scrcpyweb.R
 import com.scrcpyweb.service.MirrorService
 import com.scrcpyweb.service.TouchInjectionService
@@ -141,6 +143,13 @@ class MainActivity : AppCompatActivity() {
         findViewById<Slider>(R.id.sliderFps).addOnChangeListener { _, value, fromUser ->
             if (fromUser) prefs.edit().putInt("fps", value.toInt()).apply()
         }
+
+        findViewById<TextInputEditText>(R.id.editPort).doAfterTextChanged { text ->
+            val port = text?.toString()?.toIntOrNull()
+            if (port != null && port in 1..65535) {
+                prefs.edit().putInt("port", port).apply()
+            }
+        }
     }
 
     private fun loadPreferences() {
@@ -150,6 +159,9 @@ class MainActivity : AppCompatActivity() {
             (prefs.getInt("bitrate", 4_000_000) / 1_000_000f).coerceIn(1f, 8f)
         findViewById<Slider>(R.id.sliderFps).value =
             prefs.getInt("fps", 30).toFloat().coerceIn(15f, 60f)
+        findViewById<TextInputEditText>(R.id.editPort).setText(
+            prefs.getInt("port", 8080).toString()
+        )
     }
 
     // ─────────────────────────────────────────────────────────
@@ -200,7 +212,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val ip = service?.getWifiIpAddress() ?: "—"
-        ipText.text = "http://$ip:8080"
+        val port = service?.getPreferredPort() ?:
+            getSharedPreferences("scrcpy_prefs", Context.MODE_PRIVATE).getInt("port", 8080)
+        ipText.text = "http://$ip:$port"
 
         btnStart.visibility = if (isRunning) android.view.View.GONE else android.view.View.VISIBLE
         btnStop.visibility = if (isRunning) android.view.View.VISIBLE else android.view.View.GONE

@@ -19,4 +19,5 @@
     <string name="label_resolution">Resolution Scale</string>
     <string name="label_bitrate">Bitrate (Mbps)</string>
     <string name="label_fps">Max FPS</string>
+    <string name="label_port">Server Port (Requires Restart)</string>
 </resources>

@@ -121,7 +121,8 @@ class MirrorService : Service() {
     // ─────────────────────────────────────────────────────────
 
     private fun startWebServer() {
-        webServer = WebServer(port = 8080, assetManager = assets).also { server ->
+        val port = getPreferredPort()
+        webServer = WebServer(port = port, assetManager = assets).also { server ->
             server.onDeviceInfoRequest = { getDeviceInfo() }
             server.onStartCapture = {
                 // Browser requested capture start — delegate to the full
@@ -392,7 +393,8 @@ class MirrorService : Service() {
             getString(com.scrcpyweb.R.string.notification_text_active,
                 webServer?.streamSession?.clientCount() ?: 0)
         } else {
-            getString(com.scrcpyweb.R.string.notification_text_idle, "http://$ip:8080")
+            val port = getPreferredPort()
+            getString(com.scrcpyweb.R.string.notification_text_idle, "http://$ip:$port")
         }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(com.scrcpyweb.R.string.notification_title))
@@ -425,6 +427,11 @@ class MirrorService : Service() {
     private fun getPreferredFps(): Int {
         return getSharedPreferences("scrcpy_prefs", Context.MODE_PRIVATE)
             .getInt("fps", 30)
+    }
+
+    fun getPreferredPort(): Int {
+        return getSharedPreferences("scrcpy_prefs", Context.MODE_PRIVATE)
+            .getInt("port", 8080)
     }
 
     private fun getScreenMetrics(): DisplayMetrics {

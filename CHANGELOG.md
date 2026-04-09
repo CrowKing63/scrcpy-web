@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.2.2] - 2026-04-09
+
+### Added
+- **Configurable server port:** Users can now customize the web server port through the app settings, enabling flexibility for local network environments. Changes take effect upon restarting the server.
+
 ## [2.2.1] - 2026-04-09
 
 ### Fixed

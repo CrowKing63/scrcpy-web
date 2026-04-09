@@ -77,7 +77,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="http://—:8080"
+                    android:text="http://—"
                     android:textColor="#00E5FF"
                     android:textIsSelectable="true"
                     android:textSize="18sp"
@@ -169,6 +169,26 @@
                     android:textColor="#E0E0E0"
                     android:textSize="16sp"
                     android:textStyle="bold" />
+
+                <!-- Port -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:hint="@string/label_port"
+                    app:hintTextColor="#00BCD4"
+                    app:boxStrokeColor="#00BCD4"
+                    app:boxBackgroundColor="#2A2A3E"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.FilledBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/editPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="number"
+                        android:textColor="#E0E0E0"
+                        android:maxLength="5" />
+                </com.google.android.material.textfield.TextInputLayout>
 
                 <!-- Resolution -->
                 <TextView
