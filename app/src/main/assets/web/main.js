@@ -418,13 +418,21 @@ class ScrcpyWeb {
             }
         };
         this._pointers = new Map();
-        /** Whether we are on the dashboard (not yet mirroring). */
-        this._onDashboard = true;
-        /** Interval ID for polling /api/device-info while on the dashboard. */
+        /** True once capture_starting has been received; false until then or after failure. */
+        this._mirroring = false;
+        /** Interval ID for polling /api/device-info. */
         this._deviceInfoInterval = null;
+
+        // Restore last known phone aspect ratio so the border stays phone-shaped
+        // even before the first video stream loads.
+        const savedRatio = localStorage.getItem('scrcpy-video-ratio');
+        if (savedRatio) {
+            document.getElementById('video-player').style.aspectRatio = savedRatio;
+        }
 
         this._initIcons();
         this._initSidebars();
+        this._initInputHandlers();
         this._connect();
         this._initKeyboard();
         this._initSettings();
@@ -440,12 +448,10 @@ class ScrcpyWeb {
 
     // ── Dashboard ───────────────────────────────────────────────────────
 
-    /** Starts periodic device-info polling while on the dashboard. */
+    /** Starts periodic device-info polling. */
     _startDeviceInfoPolling() {
         this._stopDeviceInfoPolling();
-        this._deviceInfoInterval = setInterval(() => {
-            if (this._onDashboard) this._fetchDeviceInfo();
-        }, 5000);
+        this._deviceInfoInterval = setInterval(() => this._fetchDeviceInfo(), 5000);
     }
 
     /** Stops the device-info polling interval. */
@@ -482,21 +488,19 @@ class ScrcpyWeb {
 
         ws.onopen = () => {
             this._reconnectDelay = 1000;
-            if (this._onDashboard) {
-                // On the dashboard: don't init MSE yet — wait for user to click Start.
-                this._updateConnectionUI('dashboard_ready');
-            } else {
-                // Reconnecting while already in mirror mode.
+            if (this._mirroring) {
+                // Reconnecting while capture was active — resume MSE immediately.
                 this._initMSEPlayer();
+            } else {
+                this._updateConnectionUI('dashboard_ready');
             }
         };
 
         ws.onmessage = (event) => {
             if (event.data instanceof ArrayBuffer) {
-                // First binary frame while on dashboard triggers MSE init and transition.
-                if (this._onDashboard) {
-                    this._onDashboard = false;
-                    this._stopDeviceInfoPolling();
+                // Unexpected binary frame before capture_starting — init MSE on the fly.
+                if (!this._mirroring) {
+                    this._mirroring = true;
                     this._initMSEPlayer();
                     this._updateConnectionUI('connected');
                 }
@@ -506,21 +510,19 @@ class ScrcpyWeb {
                     const msg = JSON.parse(event.data);
                     switch (msg.type) {
                         case 'capture_starting':
+                            this._mirroring = true;
                             this._updateConnectionUI('capture_starting');
+                            this._setCaptureStarting(true);
                             break;
                         case 'capture_started':
-                            this._setCaptureStopped(false);
+                            this._updateConnectionUI('connected');
                             break;
                         case 'capture_stopped':
                             this._clearKeyframeTimer();
-                            if (this._onDashboard) {
-                                // Still on dashboard — just update status.
-                                this._updateConnectionUI('dashboard_ready');
-                            } else {
-                                this._setCaptureStopped(true);
-                            }
+                            this._updateConnectionUI('capture_stopped');
                             break;
                         case 'capture_failed':
+                            this._mirroring = false;
                             this._updateConnectionUI('capture_failed');
                             break;
                         case 'permission_needed':
@@ -535,10 +537,7 @@ class ScrcpyWeb {
 
         ws.onclose = () => {
             this._teardownMSE();
-            if (!this._onDashboard) {
-                document.getElementById('connection-status').className = 'status-dot disconnected';
-                document.getElementById('connection-status-label').textContent = 'Disconnected';
-            }
+            this._updateConnectionUI('disconnected');
             this._scheduleReconnect();
         };
     }
@@ -570,11 +569,6 @@ class ScrcpyWeb {
      * Schedules a reconnect attempt with exponential backoff (max 5 seconds).
      */
     _scheduleReconnect() {
-        if (this._onDashboard) {
-            this._updateConnectionUI('connecting');
-        } else {
-            this._updateConnectionUI('disconnected');
-        }
         setTimeout(() => this._connect(), this._reconnectDelay);
         this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, 5000);
     }
@@ -610,6 +604,16 @@ class ScrcpyWeb {
                 this._addSourceBuffer(data);
             }
         });
+
+        // Snap the video element to the phone's exact aspect ratio once metadata
+        // loads so the cyan border wraps the phone screen, not the whole container.
+        video.addEventListener('loadedmetadata', () => {
+            if (video.videoWidth && video.videoHeight) {
+                const ratio = `${video.videoWidth} / ${video.videoHeight}`;
+                video.style.aspectRatio = ratio;
+                localStorage.setItem('scrcpy-video-ratio', ratio);
+            }
+        }, { once: true });
 
         // Resume playback if the live stream temporarily stalls.
         // Use stable references so listeners do not accumulate
@@ -954,13 +958,18 @@ class ScrcpyWeb {
 
     /**
      * Normalises a pointer/mouse event's position relative to the video element.
+     * Falls back to `#video-area` bounds when the video has no rendered size
+     * (e.g. lock screen — no active capture, element is 0×0).
      *
      * @param {PointerEvent|WheelEvent} e  The input event.
-     * @param {HTMLVideoElement}        el The target element.
+     * @param {HTMLVideoElement}        el The target video element.
      * @returns {{ x: number, y: number }} Normalised coordinates in [0, 1].
      */
     _normalise(e, el) {
-        const rect = el.getBoundingClientRect();
+        let rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+            rect = document.getElementById('video-area')?.getBoundingClientRect() ?? rect;
+        }
         return {
             x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
             y: Math.max(0, Math.min(1, (e.clientY - rect.top)  / rect.height)),
@@ -1146,69 +1155,68 @@ class ScrcpyWeb {
     // ── Connection UI ────────────────────────────────────────────────────
 
     /**
-     * Transitions between the dashboard and mirror screens, updating
-     * dashboard status indicators as appropriate.
+     * Updates left-sidebar status indicators without toggling any screen.
+     * The 3-column layout is always visible; state changes only affect
+     * text, button availability, overlays, and the start button label.
      *
-     * @param {'connecting'|'dashboard_ready'|'capture_starting'|'connected'|'capture_failed'|'permission_needed'|'disconnected'} state
+     * @param {'connecting'|'dashboard_ready'|'capture_starting'|'connected'|'capture_stopped'|'capture_failed'|'permission_needed'|'disconnected'} state
      */
     _updateConnectionUI(state) {
-        const dashboardScreen = document.getElementById('dashboard-screen');
-        const mirrorScreen    = document.getElementById('mirror-screen');
-        const statusDot       = document.getElementById('dash-status-dot');
-        const statusText      = document.getElementById('dash-status-text');
-        const startBtn        = document.getElementById('btn-start-mirroring');
-        const hint            = document.getElementById('dash-hint');
+        const dot      = document.getElementById('connection-status');
+        const label    = document.getElementById('connection-status-label');
+        const startBtn = document.getElementById('btn-start-mirroring');
+        const hint     = document.getElementById('dash-hint');
 
-        const hide = (...els) => els.forEach(el => { el.classList.add('hidden'); el.classList.remove('active'); });
-        const show = (el)     => { el.classList.remove('hidden'); el.classList.add('active'); };
+        // Reset overlays and button to defaults on every state change.
+        this._setCaptureStarting(false);
+        this._setCaptureStopped(false);
+        startBtn.disabled = true;
+        startBtn.textContent = 'Start Mirroring';
+        hint.textContent = '';
 
         switch (state) {
             case 'connecting':
-                show(dashboardScreen); hide(mirrorScreen);
-                statusDot.className = 'status-dot';
-                statusText.textContent = 'Connecting...';
-                startBtn.disabled = true;
-                hint.textContent = '';
+                dot.className = 'status-dot';
+                label.textContent = 'Connecting…';
                 break;
             case 'dashboard_ready':
-                show(dashboardScreen); hide(mirrorScreen);
-                statusDot.className = 'status-dot connected';
-                statusText.textContent = 'Ready';
+                dot.className = 'status-dot connected';
+                label.textContent = 'Ready';
                 startBtn.disabled = false;
-                hint.textContent = '';
                 break;
             case 'capture_starting':
-                show(dashboardScreen); hide(mirrorScreen);
-                statusDot.className = 'status-dot connected';
-                statusText.textContent = 'Starting capture...';
-                startBtn.disabled = true;
-                hint.textContent = '';
+                dot.className = 'status-dot connecting';
+                label.textContent = 'Starting…';
+                hint.textContent = 'Tap Allow on your phone if prompted.';
+                this._setCaptureStarting(true);
                 break;
             case 'connected':
-                hide(dashboardScreen);
-                show(mirrorScreen);
-                this._initInputHandlers();
+                dot.className = 'status-dot connected';
+                label.textContent = 'Mirroring';
+                break;
+            case 'capture_stopped':
+                dot.className = 'status-dot disconnected';
+                label.textContent = 'Screen locked';
+                hint.textContent = 'Tap the black screen to enter PIN, or unlock your phone.';
+                this._setCaptureStopped(true);
+                startBtn.disabled = false;
+                startBtn.textContent = 'Restart Mirroring';
                 break;
             case 'capture_failed':
-                show(dashboardScreen); hide(mirrorScreen);
-                statusDot.className = 'status-dot disconnected';
-                statusText.textContent = 'Capture failed';
-                startBtn.disabled = false;
+                dot.className = 'status-dot disconnected';
+                label.textContent = 'Capture failed';
                 hint.textContent = 'Could not start capture. Tap the button to try again.';
+                startBtn.disabled = false;
                 break;
             case 'permission_needed':
-                show(dashboardScreen); hide(mirrorScreen);
-                statusDot.className = 'status-dot disconnected';
-                statusText.textContent = 'Permission needed';
-                startBtn.disabled = false;
+                dot.className = 'status-dot disconnected';
+                label.textContent = 'Permission needed';
                 hint.textContent = 'Please tap Allow on your phone when prompted.';
+                startBtn.disabled = false;
                 break;
             case 'disconnected':
-                show(dashboardScreen); hide(mirrorScreen);
-                statusDot.className = 'status-dot disconnected';
-                statusText.textContent = 'Reconnecting...';
-                startBtn.disabled = true;
-                hint.textContent = '';
+                dot.className = 'status-dot disconnected';
+                label.textContent = 'Reconnecting…';
                 break;
         }
     }
@@ -1238,7 +1246,9 @@ class ScrcpyWeb {
             // Accessibility service badge
             const badge = document.getElementById('dash-accessibility-badge');
             if (badge) {
-                badge.classList.toggle('enabled', !!info.isAccessibilityEnabled);
+                const on = !!info.isAccessibilityEnabled;
+                badge.classList.toggle('enabled', on);
+                badge.textContent = on ? 'Accessibility ON' : 'Accessibility OFF';
             }
         } catch (_) { /* server may not be ready yet */ }
     }
@@ -1262,11 +1272,10 @@ class ScrcpyWeb {
     /**
      * Builds the inline numpad panel and wires the toggle button.
      *
-     * Each numpad button sends a `key` type message with the corresponding
-     * Android key code.  The panel is hidden by default and can be toggled
-     * with the "123" button in the keypad header.
+     * Each button sends a key-down + key-up pair via WebSocket so the
+     * AccessibilityService can inject it into any focused text field.
      *
-     * Key codes: digits use KEYCODE_0–9 (7–16), ⌫ = 67 (Backspace), ↵ = 66 (Enter).
+     * Key codes: KEYCODE_0–9 = 7–16, ⌫ = 67 (KEYCODE_DEL), ↵ = 66 (KEYCODE_ENTER).
      */
     _initNumpad() {
         /** @type {Array<[string, number]>} [label, androidKeyCode] */
@@ -1292,12 +1301,22 @@ class ScrcpyWeb {
         }
 
         document.getElementById('btn-numpad-toggle')?.addEventListener('click', () => {
-            const panel = document.getElementById('numpad-panel');
-            panel?.classList.toggle('hidden');
+            document.getElementById('numpad-panel')?.classList.toggle('hidden');
         });
     }
 
     // ── Capture state overlay ─────────────────────────────────────────────
+
+    /**
+     * Shows or hides the "starting capture" overlay that appears after clicking
+     * start but before the first frame arrives.
+     *
+     * @param {boolean} starting True to show the overlay, false to hide it.
+     */
+    _setCaptureStarting(starting) {
+        document.getElementById('capture-starting-overlay')
+            ?.classList.toggle('hidden', !starting);
+    }
 
     /**
      * Shows or hides the "screen locked" overlay that appears when
@@ -1351,15 +1370,8 @@ class ScrcpyWeb {
 document.addEventListener('DOMContentLoaded', () => {
     const app = new ScrcpyWeb();
 
-    // Dashboard "Start Mirroring" button.
+    // "Start Mirroring" / "Restart Mirroring" button in the left sidebar.
     document.getElementById('btn-start-mirroring')?.addEventListener('click', () => {
-        app.requestCapture();
-    });
-
-    // "Restart Capture" button on the capture-stopped overlay —
-    // uses the full request_capture flow (with auto-tap) rather than
-    // restart_capture which only works with a valid saved token.
-    document.getElementById('btn-restart-capture')?.addEventListener('click', () => {
         app.requestCapture();
     });
 });

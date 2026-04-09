@@ -38,12 +38,30 @@ class ProjectionRequestActivity : AppCompatActivity() {
         
         armAutoTap()
 
-        setTurnScreenOn(true)
-        setShowWhenLocked(true)
+        // Ensure the screen is on and the activity shows over the keyguard.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val km = getSystemService(android.app.KeyguardManager::class.java)
+            km.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
 
         val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
                 as android.media.projection.MediaProjectionManager
-        projectionLauncher.launch(manager.createScreenCaptureIntent())
+        
+        // Small delay to ensure keyguard dismissal is processed before showing the system dialog.
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                projectionLauncher.launch(manager.createScreenCaptureIntent())
+            }
+        }, 200)
     }
 
     override fun onNewIntent(intent: Intent) {

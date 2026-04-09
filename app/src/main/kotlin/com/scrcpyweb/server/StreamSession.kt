@@ -261,6 +261,7 @@ class StreamSession {
                         json.optInt("metaState", 0)
                     )
                 }
+                "pin_gesture" -> { /* removed — coordinate-based PIN injection does not work on the lock screen */ }
                 else -> {
                     val service = TouchInjectionService.instance
                     if (service == null) {

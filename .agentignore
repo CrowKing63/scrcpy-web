@@ -1,0 +1,14 @@
+# Build outputs
+app/build/
+build/
+
+# Gradle caches
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# Generated files
+app/src/main/assets/web/*.min.js
+
+# IDE
+.idea/
+*.iml

@@ -12,42 +12,43 @@
 </head>
 <body>
 
-    <!-- ── Dashboard screen ──────────────────────────────────────── -->
-    <div id="dashboard-screen" class="screen active">
-        <div class="dashboard-card">
-            <h1 class="dashboard-title">SCRCPY-Web</h1>
-            <div class="dashboard-device-info">
-                <div class="device-detail"><span class="detail-label">Device</span><span class="detail-value" id="dash-device-model">--</span></div>
-                <div class="device-detail"><span class="detail-label">Android</span><span class="detail-value" id="dash-android-version">--</span></div>
-                <div class="device-detail"><span class="detail-label">Battery</span><span class="detail-value" id="dash-battery">--</span></div>
-                <div class="device-detail"><span class="detail-label">IP</span><span class="detail-value" id="dash-ip">--</span></div>
-            </div>
-            <div class="dashboard-status">
-                <span class="status-dot" id="dash-status-dot"></span>
-                <span id="dash-status-text">Connecting...</span>
-            </div>
-            <div class="dashboard-services">
-                <div class="service-badge" id="dash-accessibility-badge">
-                    <span class="badge-dot"></span>
-                    <span>Accessibility Service</span>
-                </div>
-            </div>
-            <button class="action-btn dashboard-start-btn" id="btn-start-mirroring" disabled>
-                Start Mirroring
-            </button>
-            <p class="dashboard-hint" id="dash-hint"></p>
-        </div>
-    </div>
+    <!-- ── Main layout — always visible 3-column ────────────────────── -->
+    <div id="main-layout">
 
-    <!-- ── Mirror screen ─────────────────────────────────────────── -->
-    <div id="mirror-screen" class="screen hidden">
-
-        <!-- Left sidebar: stats + settings + system controls -->
-        <aside id="left-sidebar" class="sidebar" aria-label="Stream stats and settings">
+        <!-- Left sidebar: device info + stats + settings + system controls -->
+        <aside id="left-sidebar" class="sidebar" aria-label="Device status and stream settings">
             <button class="sidebar-toggle" id="left-toggle" aria-label="Collapse left panel">
                 <span class="toggle-arrow" id="left-arrow"></span>
             </button>
             <div class="sidebar-content">
+
+                <!-- Device / connection section -->
+                <section class="sidebar-section" id="device-section">
+                    <h2 class="sidebar-section-title">Device</h2>
+                    <div class="device-info-rows">
+                        <div class="device-row">
+                            <span class="device-label">Model</span>
+                            <span class="device-value" id="dash-device-model">—</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">Android</span>
+                            <span class="device-value" id="dash-android-version">—</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">Battery</span>
+                            <span class="device-value" id="dash-battery">—</span>
+                        </div>
+                        <div class="device-row">
+                            <span class="device-label">IP</span>
+                            <span class="device-value" id="dash-ip">—</span>
+                        </div>
+                    </div>
+                    <div id="dash-accessibility-badge" class="accessibility-badge">Accessibility OFF</div>
+                    <button class="action-btn device-start-btn" id="btn-start-mirroring" disabled>
+                        Start Mirroring
+                    </button>
+                    <p class="sidebar-hint" id="dash-hint"></p>
+                </section>
 
                 <!-- Live stats -->
                 <section class="sidebar-section">
@@ -63,8 +64,8 @@
                     <div class="stat-row">
                         <span>Status</span>
                         <span class="stat-value status-row-value">
-                            <span id="connection-status" class="status-dot connected"></span>
-                            <span id="connection-status-label">Connected</span>
+                            <span id="connection-status" class="status-dot"></span>
+                            <span id="connection-status-label">Connecting…</span>
                         </span>
                     </div>
                 </section>
@@ -90,15 +91,14 @@
                 <section class="sidebar-section">
                     <h2 class="sidebar-section-title">System</h2>
                     <div class="system-btn-row">
-                        <button class="sys-btn" id="btn-rotate"     title="Rotate screen"  aria-label="Rotate screen"></button>
-                        <button class="sys-btn" id="btn-fullscreen" title="Fullscreen"      aria-label="Toggle fullscreen"></button>
+                        <button class="sys-btn" id="btn-rotate" title="Rotate screen" aria-label="Rotate screen"></button>
+                        <button class="sys-btn" id="btn-fullscreen" title="Fullscreen" aria-label="Toggle fullscreen"></button>
                     </div>
                 </section>
-
             </div>
         </aside>
 
-        <!-- Center: video -->
+        <!-- Center: video area — always visible, touchable even when black -->
         <div id="video-area">
             <video
                 id="video-player"
@@ -107,6 +107,7 @@
                 autoplay
                 disablePictureInPicture
             ></video>
+
         </div>
 
         <!-- Right sidebar: customizable keypad -->
@@ -119,30 +120,19 @@
                     <span class="keypad-title">Controls</span>
                     <div class="keypad-header-btns">
                         <button class="icon-btn" id="btn-numpad-toggle" title="Toggle numpad" aria-label="Toggle numpad">123</button>
-                        <button class="icon-btn" id="btn-add-key"    title="Add button"   aria-label="Add button"   style="display:none"></button>
+                        <button class="icon-btn" id="btn-add-key" title="Add button" aria-label="Add button" style="display:none"></button>
                         <button class="icon-btn" id="btn-edit-keypad" title="Edit keypad" aria-label="Toggle edit mode"></button>
                     </div>
                 </div>
                 <div id="keypad-grid"></div>
 
-                <!-- Inline numpad for PIN / text-field input (hidden by default) -->
+                <!-- Inline numpad for text-field key input -->
                 <div id="numpad-panel" class="numpad-panel hidden" aria-label="Numeric keypad">
                     <div class="numpad-grid" id="numpad-grid"></div>
                 </div>
             </div>
         </aside>
-
-        <!-- Capture-stopped overlay: shown when MediaProjection stops (e.g. screen lock) -->
-        <div id="capture-stopped-overlay" class="capture-stopped-overlay hidden" role="status" aria-live="polite">
-            <div class="capture-stopped-card">
-                <p class="capture-stopped-text">Screen locked — unlock your phone to resume</p>
-                <button class="action-btn" id="btn-restart-capture">Restart Capture</button>
-            </div>
-        </div>
-
     </div>
-
-    <!-- Permission screen removed — integrated into dashboard -->
 
     <!-- ── Key editor modal ──────────────────────────────────────── -->
     <div id="key-editor-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">

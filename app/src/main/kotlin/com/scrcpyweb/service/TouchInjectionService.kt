@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import java.io.IOException
 
 /**
  * Accessibility service responsible for injecting remote touch gestures,
@@ -65,9 +66,6 @@ class TouchInjectionService : AccessibilityService() {
         return super.onUnbind(intent)
     }
 
-    /** Timestamp of the last debug dump to avoid log flooding. */
-    private var lastDebugDumpTime = 0L
-
     /**
      * Detects the MediaProjection consent dialog and auto-taps through it.
      *
@@ -80,39 +78,64 @@ class TouchInjectionService : AccessibilityService() {
      * "Next" → "Allow") by staying active until the 10-second timeout expires.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val eventType = event?.eventType ?: return
+
+        // COORDINATE_TESTER: Log clicked nodes for debugging
+        if (eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            event.source?.let { node ->
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                val metrics = resources.displayMetrics
+                val nx = rect.centerX().toFloat() / metrics.widthPixels
+                val ny = rect.centerY().toFloat() / metrics.heightPixels
+                Log.d(TAG, "COORDINATE_TESTER: Clicked '${node.text ?: node.contentDescription ?: "null"}' at ($nx, $ny)")
+                node.recycle()
+            }
+        }
+
         if (!autoTapEnabled) return
         
-        val eventType = event?.eventType ?: return
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED &&
             eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return
 
         val now = System.currentTimeMillis()
-        // Window state changes (like dropdown opening/closing) should be processed instantly.
-        if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && 
-            now - lastAutoTapAttempt < 150L) return
+        // Samsung UI transitions require instant response. Reduced debounce for content changes.
+        val debounce = if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) 50L else 150L
+        if (now - lastAutoTapAttempt < debounce) return
         lastAutoTapAttempt = now
 
         val roots = collectWindowRoots()
         if (roots.isEmpty()) return
 
         try {
-            // Step 1: Handle Samsung One UI share mode selection
+            // Priority: If full screen mode is already selected, focus on clicking the positive button ASAP.
+            if (fullScreenModeSelected) {
+                if (attemptClickPositiveButton(roots)) return
+            }
+
+            // Step 1: Samsung One UI Share Mode Selection
             if (!fullScreenModeSelected) {
+                var justSelected = false
                 for (root in roots) {
                     if (trySelectFullScreenMode(root)) {
                         fullScreenModeSelected = true
-                        Log.d(TAG, "Successfully selected full-screen mode")
-                        // Proceed to Step 2 immediately in the same event if possible
+                        justSelected = true
+                        Log.d(TAG, "Selected full-screen mode. Trying to click start button immediately...")
                         break
                     }
+                }
+
+                if (justSelected) {
+                    // Try immediate click with current roots for maximum speed
+                    if (attemptClickPositiveButton(roots)) return
                 }
 
                 if (!fullScreenModeSelected && !dropDownOpened) {
                     for (root in roots) {
                         if (tryOpenShareModeDropdown(root)) {
                             dropDownOpened = true
-                            Log.d(TAG, "Successfully triggered share mode dropdown")
+                            Log.d(TAG, "Triggered share mode dropdown")
                             return 
                         }
                     }
@@ -120,39 +143,42 @@ class TouchInjectionService : AccessibilityService() {
             }
 
             // Step 2: Click the positive (confirm / next / allow / start) button.
-            for (root in roots) {
-                // 1. Try known Samsung/Android positive button IDs
-                val positiveIds = listOf(
-                    "android:id/button1", 
-                    "com.android.systemui:id/button_start", 
-                    "com.samsung.android.systemui:id/button_start",
-                    "com.samsung.android.systemui:id/button_primary",
-                    "com.android.systemui:id/ok"
-                )
-                for (id in positiveIds) {
-                    if (tryClickButtonById(root, id)) {
-                        Log.d(TAG, "Clicked positive button via ID: $id")
-                        return
-                    }
-                }
+            if (attemptClickPositiveButton(roots)) return
 
-                // 2. Try exact text match for "화면 공유" (prioritizing the button)
-                if (tryClickButtonByExactText(root, KNOWN_POSITIVE_TEXTS)) {
-                    Log.d(TAG, "Clicked positive button via exact text")
-                    return
-                }
-
-                // 3. Last resort: Cancel-anchor sibling matching
-                if (tryClickPositiveButton(root)) {
-                    Log.d(TAG, "Clicked positive button via cancel-anchor")
-                    return
-                }
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error in auto-tap: ${e.message}")
         } finally {
             roots.forEach { it.recycle() }
         }
+    }
+
+    /**
+     * Attempts to find and click the positive action button using IDs, text, or relative position.
+     * Prioritizes Samsung-specific IDs and exact text matches.
+     */
+    private fun attemptClickPositiveButton(roots: List<AccessibilityNodeInfo>): Boolean {
+        for (root in roots) {
+            // 1. Try known Samsung/Android positive button IDs (High priority)
+            for (id in POSITIVE_BUTTON_IDS) {
+                if (tryClickButtonById(root, id)) {
+                    Log.d(TAG, "Clicked positive button via ID: $id")
+                    return true
+                }
+            }
+
+            // 2. Try exact text match for "화면 공유" etc.
+            if (tryClickButtonByExactText(root, KNOWN_POSITIVE_TEXTS)) {
+                Log.d(TAG, "Clicked positive button via exact text")
+                return true
+            }
+
+            // 3. Last resort: Cancel-anchor sibling matching
+            if (tryClickPositiveButton(root)) {
+                Log.d(TAG, "Clicked positive button via cancel-anchor")
+                return true
+            }
+        }
+        return false
     }
 
     /**
@@ -190,29 +216,132 @@ class TouchInjectionService : AccessibilityService() {
     }
 
     /**
+     * Attempts to find and click a numeric button (0-9) on the lock screen.
+     * Uses multiple strategies: Resource ID, Text search, and Recursive tree traversal.
+     */
+    private fun tryClickDigitButton(root: AccessibilityNodeInfo, digit: Char): Boolean {
+        // 1. Try common Resource ID patterns
+        val digitIds = listOf(
+            "com.android.systemui:id/key$digit",
+            "com.android.keyguard:id/key$digit",
+            "com.android.systemui:id/digit_$digit",
+            "com.android.keyguard:id/digit_$digit",
+            "com.samsung.android.systemui:id/key$digit",
+            "key$digit",
+            "digit$digit"
+        )
+        for (id in digitIds) {
+            val nodes = root.findAccessibilityNodeInfosByViewId(id)
+            if (!nodes.isNullOrEmpty()) {
+                for (node in nodes) {
+                    if (performClickOnNode(node)) {
+                        nodes.forEach { it.recycle() }
+                        return true
+                    }
+                    node.recycle()
+                }
+            }
+        }
+
+        // 2. Try exact text or content description
+        if (tryClickButtonByExactText(root, listOf(digit.toString()))) {
+            return true
+        }
+
+        // 3. Recursive deep search (Final fallback)
+        val resultNodes = mutableListOf<AccessibilityNodeInfo>()
+        findNodesRecursive(root, digit.toString(), resultNodes)
+        for (node in resultNodes) {
+            val clicked = performClickOnNode(node)
+            node.recycle()
+            if (clicked) {
+                resultNodes.forEach { try { it.recycle() } catch(e: Exception) {} }
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Recursively traverses the view tree to find nodes matching the target text, description, or ID.
+     */
+    private fun findNodesRecursive(node: AccessibilityNodeInfo, target: String, results: MutableList<AccessibilityNodeInfo>) {
+        val text = node.text?.toString()?.trim() ?: ""
+        val desc = node.contentDescription?.toString()?.trim() ?: ""
+        val id = node.viewIdResourceName ?: ""
+
+        if (text.equals(target, ignoreCase = true) || 
+            desc.equals(target, ignoreCase = true) || 
+            id.endsWith("/key$target") || 
+            id.endsWith("/digit_$target") ||
+            id.endsWith("/key_$target")) {
+            results.add(AccessibilityNodeInfo.obtain(node))
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            findNodesRecursive(child, target, results)
+            child.recycle()
+        }
+    }
+
+    /**
+     * Helper to perform a click on a node or its clickable parent.
+     */
+    private fun performClickOnNode(node: AccessibilityNodeInfo): Boolean {
+        val clickable = findClickableAncestor(node)
+        if (clickable != null) {
+            val success = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            clickable.recycle()
+            return success
+        }
+        return false
+    }
+
+    /**
      * Attempts to find and click a button by its exact text match.
      */
     private fun tryClickButtonByExactText(root: AccessibilityNodeInfo, texts: List<String>): Boolean {
         for (text in texts) {
             val nodes = root.findAccessibilityNodeInfosByText(text)
-            for (node in nodes) {
-                val nodeText = node.text?.toString()?.trim() ?: ""
-                // Use truly exact match to avoid clicking list items
-                if (nodeText.equals(text, ignoreCase = true)) {
-                    val clickable = findClickableAncestor(node)
-                    if (clickable != null) {
-                        val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                        if (clicked) {
-                            node.recycle()
-                            nodes.forEach { it.recycle() }
-                            return true
+            if (nodes != null) {
+                for (node in nodes) {
+                    val nodeText = node.text?.toString()?.trim() ?: ""
+                    val nodeDesc = node.contentDescription?.toString()?.trim() ?: ""
+                    if (nodeText.equals(text, ignoreCase = true) || nodeDesc.equals(text, ignoreCase = true)) {
+                        val clickable = findClickableAncestor(node)
+                        if (clickable != null) {
+                            val success = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                            if (success) {
+                                clickable.recycle()
+                                node.recycle()
+                                nodes.forEach { it.recycle() }
+                                return true
+                            }
+                            clickable.recycle()
                         }
-                        clickable.recycle()
                     }
+                    node.recycle()
                 }
-                node.recycle()
             }
-            nodes.forEach { it.recycle() }
+        }
+        return false
+    }
+
+    /**
+     * Attempts to click the "Done" or "OK" button on the lock screen by ID.
+     */
+    private fun tryClickLockScreenDoneButton(root: AccessibilityNodeInfo): Boolean {
+        val commonIds = listOf(
+            "com.android.systemui:id/key_enter",
+            "com.android.systemui:id/key_ok",
+            "com.android.keyguard:id/key_enter",
+            "com.android.keyguard:id/ok",
+            "com.android.systemui:id/done_button"
+        )
+        for (id in commonIds) {
+            if (tryClickButtonById(root, id)) return true
         }
         return false
     }
@@ -368,7 +497,7 @@ class TouchInjectionService : AccessibilityService() {
      * @return True if the full-screen option was found and clicked.
      */
     private fun trySelectFullScreenMode(root: AccessibilityNodeInfo): Boolean {
-        val node = findNodeByText(root, FULL_SCREEN_SHARE_TEXTS)
+        val node = findNodeByText(root, FULL_SCREEN_SHARE_TEXTS, exact = true)
         if (node != null) {
             val clickable = findClickableAncestor(node)
             node.recycle()
@@ -634,8 +763,21 @@ class TouchInjectionService : AccessibilityService() {
      * @param metaState Modifier-key bitmask (currently unused; reserved for shift/caps).
      */
     fun injectKey(keyCode: Int, metaState: Int = 0) {
-        val root         = rootInActiveWindow ?: return
-        val focusedNode  = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        val roots = collectWindowRoots()
+        if (roots.isEmpty()) {
+            // No window roots available — fall back to shell key event.
+            Log.w(TAG, "injectKey: no window roots, trying shell fallback for keyCode=$keyCode")
+            tryShellKeyEvent(keyCode)
+            return
+        }
+
+        // 1. Try to find a focused input in ANY window.
+        var focusedNode: AccessibilityNodeInfo? = null
+        for (root in roots) {
+            focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focusedNode != null) break
+        }
+
         if (focusedNode != null) {
             val hasShift = (metaState and META_SHIFT_MASK) != 0
             when (keyCode) {
@@ -644,24 +786,46 @@ class TouchInjectionService : AccessibilityService() {
                     if (text.isNotEmpty()) setNodeText(focusedNode, text.dropLast(1))
                 }
                 KEYCODE_ENTER -> {
-                    // Append a newline — works for multi-line fields.
-                    // Single-line fields typically handle \n as a submit.
                     val text = focusedNode.text?.toString() ?: ""
                     setNodeText(focusedNode, "$text\n")
                 }
                 else -> {
-                    val ch = keycodeToChar(keyCode, hasShift) ?: run {
-                        focusedNode.recycle()
-                        root.recycle()
-                        return
+                    val ch = keycodeToChar(keyCode, hasShift)
+                    if (ch != null) {
+                        val text = focusedNode.text?.toString() ?: ""
+                        setNodeText(focusedNode, text + ch)
                     }
-                    val text = focusedNode.text?.toString() ?: ""
-                    setNodeText(focusedNode, text + ch)
                 }
             }
             focusedNode.recycle()
+        } else {
+            // 2. No focused input (e.g., Lock Screen). Try to find and click matching buttons in ALL windows.
+            val ch = keycodeToChar(keyCode, false)
+            val nodeSuccess = if (ch != null && ch.isDigit()) {
+                roots.any { tryClickDigitButton(it, ch) }
+            } else if (keyCode == KEYCODE_ENTER) {
+                // Try Lock Screen Done button IDs first
+                if (roots.any { tryClickLockScreenDoneButton(it) }) {
+                    Log.d(TAG, "Injected Enter via lock screen button ID")
+                    true
+                } else {
+                    val enterTexts = listOf("OK", "Enter", "완료", "확인", "Done", "Next", "다음", "입력", "Check")
+                    roots.any { tryClickButtonByExactText(it, enterTexts) }
+                }
+            } else if (keyCode == KEYCODE_BACKSPACE) {
+                val deleteTexts = listOf("Delete", "Clear", "삭제", "지우기", "Back")
+                roots.any { tryClickButtonByExactText(it, deleteTexts) }
+            } else false
+
+            if (nodeSuccess) {
+                Log.d(TAG, "Injected key $keyCode via node click")
+            } else {
+                // 3. Node-based approach failed — fall back to shell key event.
+                Log.d(TAG, "Node-based key injection failed for keyCode=$keyCode, trying shell fallback")
+                tryShellKeyEvent(keyCode)
+            }
         }
-        root.recycle()
+        roots.forEach { it.recycle() }
     }
 
     /**
@@ -795,6 +959,39 @@ class TouchInjectionService : AccessibilityService() {
         }
     }
 
+    /**
+     * Attempts to inject a key event via the system shell command `input keyevent`.
+     *
+     * This runs as the app's UID and may fail with a SecurityException on
+     * most non-rooted devices (the `input` command requires INJECT_EVENTS
+     * permission). However, it's worth attempting as some device configurations
+     * permit it.
+     *
+     * Runs asynchronously on a background thread to avoid blocking.
+     *
+     * @param keyCode Android key code to inject.
+     */
+    private fun tryShellKeyEvent(keyCode: Int) {
+        Thread {
+            try {
+                val process = Runtime.getRuntime().exec(arrayOf("input", "keyevent", keyCode.toString()))
+                val exitCode = process.waitFor()
+                if (exitCode == 0) {
+                    Log.d(TAG, "Shell keyevent SUCCESS: keyCode=$keyCode")
+                } else {
+                    val error = process.errorStream.bufferedReader().readText().trim()
+                    Log.w(TAG, "Shell keyevent FAILED (exit=$exitCode): $error")
+                }
+            } catch (e: IOException) {
+                Log.w(TAG, "Shell keyevent IOException: ${e.message}")
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Shell keyevent SecurityException: ${e.message}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Shell keyevent error: ${e.message}")
+            }
+        }.start()
+    }
+
     companion object {
         private const val TAG = "TouchInjection"
 
@@ -812,6 +1009,18 @@ class TouchInjectionService : AccessibilityService() {
 
         /** Minimum interval between auto-tap processing attempts. */
         private const val AUTO_TAP_DEBOUNCE_MS = 300L
+
+        /**
+         * Known Samsung/Android positive button IDs.
+         * button_primary and button_start are prioritized for One UI 6.1+.
+         */
+        private val POSITIVE_BUTTON_IDS = listOf(
+            "com.samsung.android.systemui:id/button_primary",
+            "com.samsung.android.systemui:id/button_start",
+            "com.android.systemui:id/button_start",
+            "android:id/button1",
+            "com.android.systemui:id/ok"
+        )
 
         /**
          * Full-screen share mode option texts in the Samsung One UI MediaProjection

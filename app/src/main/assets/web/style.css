@@ -27,186 +27,86 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* ── Screens ────────────────────────────────────────────────────────── */
-.screen {
+/* ── Main layout — always-visible 3-column ──────────────────────────── */
+#main-layout {
     position: fixed;
     inset: 0;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.3s ease;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: flex-start;
+    background: #000;
 }
-.screen.hidden { opacity: 0; pointer-events: none; }
-.screen.active  { opacity: 1; pointer-events: auto; }
 
-/* ── Connection / permission card ───────────────────────────────────── */
-.connect-card {
+/* ── Device section (top of left sidebar) ───────────────────────────── */
+.device-info-rows {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    padding: 40px 32px;
-    background: var(--bg-surface);
-    border-radius: var(--radius);
-    backdrop-filter: blur(var(--blur));
-    -webkit-backdrop-filter: blur(var(--blur));
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
+    gap: 5px;
+    margin-bottom: 10px;
 }
 
-.connect-icon { font-size: 48px; }
-
-.connect-title {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--accent-cyan);
-}
-
-.connect-status {
-    font-size: 14px;
-    color: var(--text-muted);
-    line-height: 1.5;
-}
-
-.device-info {
-    font-size: 12px;
-    color: var(--text-muted);
-    border-top: 1px solid rgba(255,255,255,0.08);
-    padding-top: 12px;
-    width: 100%;
-}
-.device-info.hidden { display: none; }
-
-/* Pulsing ring animation */
-.pulse-ring {
-    position: absolute;
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    border: 2px solid var(--accent-cyan);
-    animation: pulse 2s ease-out infinite;
-    opacity: 0;
-}
-@keyframes pulse {
-    0%   { transform: scale(0.8); opacity: 0.8; }
-    100% { transform: scale(2);   opacity: 0; }
-}
-
-/* ── Dashboard card ─────────────────────────────────────────────────── */
-.dashboard-card {
+.device-row {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-    padding: 40px 36px;
-    background: var(--bg-surface);
-    border-radius: var(--radius);
-    backdrop-filter: blur(var(--blur));
-    -webkit-backdrop-filter: blur(var(--blur));
-    text-align: center;
-    max-width: 420px;
-    width: 90%;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.78rem;
 }
 
-.dashboard-title {
-    font-size: 26px;
-    font-weight: 600;
-    color: var(--accent-cyan);
-    letter-spacing: -0.02em;
-}
-
-.dashboard-device-info {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px 24px;
-    width: 100%;
-    padding: 16px 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.device-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    text-align: left;
-}
-
-.detail-label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+.device-label {
     color: var(--text-muted);
+    flex-shrink: 0;
+    margin-right: 6px;
 }
 
-.detail-value {
-    font-size: 13px;
+.device-value {
     color: var(--text-primary);
     font-weight: 500;
+    text-align: right;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.dashboard-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-muted);
+.accessibility-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(244, 67, 54, 0.15);
+    color: #f44336;
+    margin-bottom: 10px;
+    text-align: center;
 }
 
-.dashboard-services {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: center;
+.accessibility-badge.enabled {
+    background: rgba(118, 255, 3, 0.12);
+    color: var(--accent-green);
 }
 
-.service-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 20px;
-    font-size: 11px;
-    color: var(--text-muted);
-}
-
-.service-badge .badge-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #f44336;
-    flex-shrink: 0;
-}
-
-.service-badge.enabled .badge-dot {
-    background: var(--accent-green);
-}
-
-.dashboard-start-btn {
+.device-start-btn {
     width: 100%;
-    padding: 14px 24px;
-    font-size: 15px;
-    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 13px;
+    border-radius: 10px;
     transition: opacity 0.15s, transform 0.1s;
 }
-.dashboard-start-btn:disabled {
+
+.device-start-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
-.dashboard-start-btn:not(:disabled):active {
+
+.device-start-btn:not(:disabled):active {
     transform: scale(0.97);
 }
 
-.dashboard-hint {
-    font-size: 12px;
+.sidebar-hint {
+    font-size: 0.72rem;
     color: var(--text-muted);
     line-height: 1.5;
-    min-height: 18px;
+    margin-top: 6px;
+    min-height: 1em;
 }
 
 /* ── Action button ──────────────────────────────────────────────────── */
@@ -224,14 +124,7 @@ body {
 }
 .action-btn:active { opacity: 0.75; }
 
-/* ── Mirror screen — 3-column layout ────────────────────────────────── */
-#mirror-screen {
-    position: relative;
-    background: #000;
-    flex-direction: row;
-    align-items: stretch;
-    justify-content: flex-start;
-}
+/* ── Video column ────────────────────────────────────────────────────── */
 
 /* Center video column */
 #video-area {
@@ -241,14 +134,20 @@ body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    position: relative; /* Contain overlays */
+    background: #0d0d20;
 }
 
 #video-player {
+    /* Sized by JS aspect-ratio once video metadata loads.
+       Falls back to typical phone portrait ratio until then. */
+    aspect-ratio: 9 / 19.5;
     max-width: 100%;
-    max-height: 100vh;
-    object-fit: contain;
+    max-height: 100%;
+    border: 2px solid rgba(0, 229, 255, 0.75);
+    box-shadow: 0 0 24px rgba(0, 229, 255, 0.35);
     border-radius: 8px;
-    box-shadow: 0 0 40px rgba(0, 229, 255, 0.15);
+    object-fit: fill;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
@@ -683,6 +582,7 @@ body {
     backdrop-filter: blur(6px);
     z-index: 50;
     animation: fadeIn 0.2s ease;
+    border-radius: 8px; /* Match video area/player if needed */
 }
 .capture-stopped-overlay.hidden { display: none; }
 .capture-stopped-card {
@@ -732,3 +632,4 @@ body {
 }
 .numpad-btn:hover  { background: rgba(0, 229, 255, 0.08); border-color: rgba(0, 229, 255, 0.3); }
 .numpad-btn:active { transform: scale(0.92); }
+

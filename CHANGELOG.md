@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.2.1] - 2026-04-09
+
+### Fixed
+- **Improved MediaProjection request stability:** Added a short delay (200ms) before launching the system screen capture dialog to ensure the keyguard dismissal is fully processed. This fixes potential race conditions where the permission dialog would fail to appear when launched immediately after unlocking the screen.
+
 ## [2.2.0] - 2026-04-08
 
 ### Changed
