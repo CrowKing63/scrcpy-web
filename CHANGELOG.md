@@ -3,6 +3,12 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.1] - 2026-04-09
+
+### Fixed
+- **Critical Frame Repetition Bug:** Fixed a sequence number backward-jump issue that caused frame repetition loops after browser refresh. The problem occurred because cached keyframe packets had stale sequence numbers that conflicted with live encoder frames after `resetSequence()` was called on reconnection. Removed stale keyframe caching in favor of requesting fresh live IDR frames, ensuring proper MSE segment sequencing in Safari.
+- **Init Segment Gate Bypass:** Fixed a potential issue where dynamic init segment updates (from SPS/PPS changes) could be silently dropped by the client-side IDR gate during stream establishment.
+
 ## [2.3.0] - 2026-04-09
 
 ### Added

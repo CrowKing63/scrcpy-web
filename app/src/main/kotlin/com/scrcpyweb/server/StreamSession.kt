@@ -29,10 +29,6 @@ class StreamSession {
     @Volatile
     var initSegment: ByteArray? = null
 
-    /** The most recently sent keyframe. Cached to show the screen immediately to new clients. */
-    @Volatile
-    var lastKeyframe: ByteArray? = null
-
     /**
      * Whether screen capture is currently active.
      * Used to inform clients that connect after capture has stopped so they
@@ -104,7 +100,10 @@ class StreamSession {
             if (type == 0x03) {
                 clientReceivedLiveIdr = true
             }
-            if (clientReceivedLiveIdr) {
+            // Init segments (0x01) always pass through so that a concurrent
+            // updateInitSegment() call is not silently dropped while waiting
+            // for the first live IDR.
+            if (clientReceivedLiveIdr || type == 0x01) {
                 frameChannel.trySend(rawFrame)
             }
         }
@@ -119,14 +118,6 @@ class StreamSession {
         // prompt the user to restart rather than waiting on a black screen.
         if (!isCapturing) {
             statusChannel.trySend("""{"type":"capture_stopped"}""")
-        }
-
-        // Send the cached IDR frame if available, so the client sees the
-        // static screen immediately.  Because the listener above drops live
-        // P-frames until the next live IDR, there is no risk of a decoder
-        // reference gap.
-        lastKeyframe?.let { kf ->
-            frameChannel.trySend(kf)
         }
 
         // Per-session pointer tracking: pointerId → (startX, startY, startTimeMs)
@@ -187,7 +178,6 @@ class StreamSession {
         val type   = if (isKeyFrame) 0x03 else 0x02
         val header = buildHeader(type, frameData.size)
         val packet = header + frameData
-        if (isKeyFrame) lastKeyframe = packet
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 
