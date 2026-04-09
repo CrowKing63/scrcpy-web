@@ -101,6 +101,19 @@ esac
 CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
 
+# For Cygwin, switch paths to Windows format before running java
+if $cygwin ; then
+    APP_HOME=`cygpath --path --mixed "$APP_HOME"`
+    CLASSPATH=`cygpath --path --mixed "$CLASSPATH"`
+    JAVA_HOME=`cygpath --path --mixed "$JAVA_HOME"`
+fi
+
+# For Msys, make sure to dot-quote the classpath
+if $msys ; then
+    CLASSPATH=`cygpath --path --mixed "$CLASSPATH"`
+fi
+
+
 # Determine the Java command to use to start the JVM.
 if [ -n "$JAVA_HOME" ] ; then
     if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
