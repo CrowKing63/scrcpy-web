@@ -1,7 +1,7 @@
 # SCRCPY-Web
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/your-username/scrcpy-web)](https://github.com/your-username/scrcpy-web/releases)
+[![Release](https://img.shields.io/github/v/release/CrowKing63/scrcpy-web)](https://github.com/CrowKing63/scrcpy-web/releases)
 
 Mirror and control your Android screen from any browser over local Wi-Fi — no PC required.
 
