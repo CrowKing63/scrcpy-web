@@ -65,8 +65,12 @@ class VideoEncoder(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
-            // Repeat is intentionally disabled so the static screen does not emit frames.
-            // This prevents timestamp looping and battery waste.
+            // Re-emit the last encoded frame every 100 ms when the screen is static.
+            // Without this, requestKeyframe() has no effect on a static screen because
+            // the encoder only outputs a frame when the VirtualDisplay delivers one.
+            // The FMP4Muxer normalises timestamps from the first IDR so repeated frames
+            // do not cause sequence or timestamp issues.
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000L)
         }
 
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).also { c ->

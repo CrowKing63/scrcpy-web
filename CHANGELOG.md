@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.2] - 2026-04-09
+
+### Fixed
+- **Frame Repetition and Refresh Black Screen:** Restored `KEY_REPEAT_PREVIOUS_FRAME_AFTER` encoder parameter (100ms interval) to ensure the encoder generates frames even when the screen is static. Without this, `requestKeyframe()` has no effect on static screens, causing video stalls that trigger the JavaScript waiting handler to seek backward, resulting in frame repetition loops. The previous removal of this parameter was based on perceived "timestamp looping" issues that are now properly handled by FMP4Muxer's DTS normalization from the first IDR.
+
 ## [2.3.1] - 2026-04-09
 
 ### Fixed
