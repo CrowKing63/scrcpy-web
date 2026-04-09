@@ -65,9 +65,8 @@ class VideoEncoder(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
-            // Repeat the last frame when the screen is static so the encoder
-            // keeps producing output even if VirtualDisplay sends nothing new.
-            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1_000_000L / fps)
+            // Repeat is intentionally disabled so the static screen does not emit frames.
+            // This prevents timestamp looping and battery waste.
         }
 
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).also { c ->

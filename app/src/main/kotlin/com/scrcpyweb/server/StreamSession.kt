@@ -29,6 +29,10 @@ class StreamSession {
     @Volatile
     var initSegment: ByteArray? = null
 
+    /** The most recently sent keyframe. Cached to show the screen immediately to new clients. */
+    @Volatile
+    var lastKeyframe: ByteArray? = null
+
     /**
      * Whether screen capture is currently active.
      * Used to inform clients that connect after capture has stopped so they
@@ -94,7 +98,16 @@ class StreamSession {
 
         // Register listeners BEFORE enqueuing the init segment so that any
         // concurrent updateInitSegment() call also goes through the channel.
-        frameListeners[id]  = { rawFrame -> frameChannel.trySend(rawFrame) }
+        var clientReceivedLiveIdr = false
+        frameListeners[id]  = { rawFrame ->
+            val type = rawFrame[0].toInt()
+            if (type == 0x03) {
+                clientReceivedLiveIdr = true
+            }
+            if (clientReceivedLiveIdr) {
+                frameChannel.trySend(rawFrame)
+            }
+        }
         statusListeners[id] = { msg      -> statusChannel.trySend(msg) }
 
         // Always enqueue the cached init segment (if any) so new clients can
@@ -108,16 +121,13 @@ class StreamSession {
             statusChannel.trySend("""{"type":"capture_stopped"}""")
         }
 
-        // Do NOT send the cached lastKeyframe here.
-        //
-        // Sending a stale IDR_N followed by live P-frames causes a reference-
-        // frame gap at the decoder: P-frames between IDR_N and the current
-        // encoder position reference frames the client never received.
-        // On Safari / visionOS MSE this causes a SourceBuffer error from which
-        // the client cannot recover without a full reconnect.
-        //
-        // requestKeyframe() (invoked above via onClientConnected) delivers a
-        // fresh IDR in ~33 ms — fast enough to remove the need for a cached one.
+        // Send the cached IDR frame if available, so the client sees the
+        // static screen immediately.  Because the listener above drops live
+        // P-frames until the next live IDR, there is no risk of a decoder
+        // reference gap.
+        lastKeyframe?.let { kf ->
+            frameChannel.trySend(kf)
+        }
 
         // Per-session pointer tracking: pointerId → (startX, startY, startTimeMs)
         val pointerStates = HashMap<Int, Triple<Float, Float, Long>>()
@@ -177,6 +187,7 @@ class StreamSession {
         val type   = if (isKeyFrame) 0x03 else 0x02
         val header = buildHeader(type, frameData.size)
         val packet = header + frameData
+        if (isKeyFrame) lastKeyframe = packet
         frameListeners.values.forEach { listener -> listener(packet) }
     }
 

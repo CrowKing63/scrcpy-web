@@ -261,7 +261,9 @@ class MirrorService : Service() {
                     val isKeyFrame = (info.flags and android.media.MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
                         || containsIdrNalu(frameData)
                     val segment = muxer.muxFrame(frameData, isKeyFrame, info.presentationTimeUs, info.presentationTimeUs)
-                    webServer?.streamSession?.sendFrameToAll(segment, isKeyFrame)
+                    if (segment != null) {
+                        webServer?.streamSession?.sendFrameToAll(segment, isKeyFrame)
+                    }
                 }
             }
 

@@ -2,6 +2,9 @@
 
 > Detailed reference: `docs/claude-reference.md`
 
+## RESTRICTED FILES (GUARDRAIL)
+- **`app/src/main/kotlin/com/scrcpyweb/service/TouchInjectionService.kt`**: CRITICAL. Core gesture/input logic. **DO NOT MODIFY** without explicit user permission.
+
 ## Project Overview
 
 **SCRCPY-Web** — Android app with embedded Ktor/Netty web server. Mirrors and controls phone screen from any browser (primary: Apple Vision Pro Safari) over local Wi-Fi, no PC required.

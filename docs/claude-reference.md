@@ -2,6 +2,9 @@
 
 > Detailed reference extracted from CLAUDE.md. Not loaded automatically — read when needed.
 
+## Project Guardrails (RESTRICTED FILES)
+- **`app/src/main/kotlin/com/scrcpyweb/service/TouchInjectionService.kt`**: This is the most important file for remote connectivity. **DO NOT MODIFY** it without explicit user permission. Any changes to the gesture injection or auto-tap logic could break the entire remote control experience.
+
 ---
 
 ## Key Dependencies

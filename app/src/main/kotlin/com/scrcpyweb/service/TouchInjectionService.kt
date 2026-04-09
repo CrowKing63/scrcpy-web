@@ -1,3 +1,11 @@
+/*
+ * CRITICAL: DO NOT MODIFY THIS FILE WITHOUT EXPLICIT PERMISSION FROM THE USER.
+ * This file (TouchInjectionService.kt) is the core of the remote control functionality.
+ * Any unintentional changes to the gesture logic or the auto-tap system will break
+ * the application's ability to mirror and control the device remotely.
+ *
+ * 이 파일은 원격 모바일 접속의 핵심 로직을 담고 있습니다. 사용자 허가 없이 절대 수정하지 마세요.
+ */
 package com.scrcpyweb.service
 
 import android.accessibilityservice.AccessibilityService

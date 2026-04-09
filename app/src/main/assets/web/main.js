@@ -511,6 +511,7 @@ class ScrcpyWeb {
                     switch (msg.type) {
                         case 'capture_starting':
                             this._mirroring = true;
+                            this._initMSEPlayer();
                             this._updateConnectionUI('capture_starting');
                             this._setCaptureStarting(true);
                             break;

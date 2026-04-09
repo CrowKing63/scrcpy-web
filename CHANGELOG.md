@@ -3,6 +3,13 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.2.6] - 2026-04-09
+
+### Fixed
+- **Mirroring Initialization Fix:** Fixed a race condition where the MSE player was not initialized before the first IDR frame arrived, solving the "black screen until manual interaction" issue.
+- **Improved Frame Synchronization:** Removed unnecessary frame repeating for static screens and updated `FMP4Muxer` to strictly drop P-frames until the first live IDR arrives, preventing periodic frame loops and lag.
+- **Immediate Screen Display:** Re-enabled smart keyframe caching for new clients. Combined with live P-frame suppression, this allows newly connected clients to see the device screen immediately without decoder sync errors.
+
 ## [2.2.5] - 2026-04-09
 
 ### Fixed

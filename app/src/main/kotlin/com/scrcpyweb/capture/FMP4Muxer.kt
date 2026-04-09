@@ -61,10 +61,13 @@ class FMP4Muxer(
      * @param dts        Decode timestamp in microseconds (equal to pts for baseline).
      * @return Raw bytes of the moof + mdat segment.
      */
-    fun muxFrame(data: ByteArray, isKeyFrame: Boolean, pts: Long, dts: Long): ByteArray {
+    fun muxFrame(data: ByteArray, isKeyFrame: Boolean, pts: Long, dts: Long): ByteArray? {
         // Normalise timestamps so tfdt starts at 0, preventing 32-bit overflow
         // when the device has been running for more than ~13 hours.
-        if (firstDts < 0L) firstDts = dts
+        if (firstDts < 0L) {
+            if (!isKeyFrame) return null
+            firstDts = dts
+        }
         val normPts = pts - firstDts
         val normDts = dts - firstDts
 

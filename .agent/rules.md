@@ -1,5 +1,8 @@
 # SCRCPY-Web Project Rules
 
+## Restricted Files (GUARDRAIL)
+- **`app/src/main/kotlin/com/scrcpyweb/service/TouchInjectionService.kt`**: This is a CRITICAL file that handles remote touch injection and gesture logic. **DO NOT MODIFY** this file without explicit user instruction. Any changes here could break the entire remote control feature.
+
 ## General Policies
 - **Language**: All code, comments, KDoc, JSDoc, and Web UI text must be **English**.
 - **Translations**: Korean and other languages are only in `res/values-{locale}/strings.xml`.
