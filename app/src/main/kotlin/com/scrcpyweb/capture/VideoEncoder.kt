@@ -65,12 +65,13 @@ class VideoEncoder(
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
             setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
-            // Re-emit the last encoded frame every 100 ms when the screen is static.
-            // Without this, requestKeyframe() has no effect on a static screen because
-            // the encoder only outputs a frame when the VirtualDisplay delivers one.
-            // The FMP4Muxer normalises timestamps from the first IDR so repeated frames
-            // do not cause sequence or timestamp issues.
-            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000L)
+            // Re-emit the last encoded frame at the configured fps rate when the screen
+            // is static.  The interval must match the fMP4 sample_duration (timescale/fps)
+            // so that the browser's SourceBuffer fills at the same rate it drains.
+            // Using a longer interval (e.g. 100 ms) with a 33 ms sample_duration causes
+            // the buffer to deplete faster than it fills, triggering the MSE 'waiting'
+            // event which seeks backward and creates visible frame repetition loops.
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1_000_000L / fps)
         }
 
         codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).also { c ->

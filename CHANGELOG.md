@@ -3,6 +3,11 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.3] - 2026-04-09
+
+### Fixed
+- **Frame Repetition Loop (root cause fix):** Changed `KEY_REPEAT_PREVIOUS_FRAME_AFTER` interval from 100 ms to `1 000 000 / fps` µs (≈ 33 ms at 30 fps). The fMP4 `sample_duration` field is fixed at `timescale / fps` (33 ms), so the browser's SourceBuffer drains at exactly the same rate repeat frames arrive. The previous 100 ms interval caused the buffer to deplete ~3× faster than it refilled, triggering the MSE `waiting` event which sought backward by 0.1 s and produced the observed ~1-second frame repetition loops after screen transitions and after browser refresh.
+
 ## [2.3.2] - 2026-04-09
 
 ### Fixed
