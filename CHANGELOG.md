@@ -3,6 +3,12 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.5] - 2026-04-10
+
+### Fixed
+- **Capture Initialization Reliability:** Added `isRequestPending` state management in `MirrorService` and an `onResume` hook in `ProjectionRequestActivity` to ensure the auto-tap service re-arms correctly when the screen is unlocked.
+- **Web UI UX Improvements:** Updated the "Starting..." dashboard state to include a "Retry" button and a helpful hint for users needing to unlock their phones with a PIN, allowing for manual recovery without page refresh.
+
 ## [2.3.4] - 2026-04-09
 
 ### Fixed

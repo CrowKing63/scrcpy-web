@@ -58,6 +58,9 @@ class MirrorService : Service() {
     var isCapturing: Boolean = false
         private set
 
+    /** True while a MediaProjection permission dialog is pending user response. */
+    private var isRequestPending = false
+
     /** Saved MediaProjection result code for restarting capture after rotation. */
     private var savedProjectionResultCode: Int = 0
 
@@ -179,6 +182,15 @@ class MirrorService : Service() {
             }
         }
 
+        // Always re-arm auto-tap. If the dialog is already visible (e.g. after PIN
+        // unlock when the user tapped Retry), this refreshes the timeout without
+        // launching a duplicate ProjectionRequestActivity.
+        TouchInjectionService.instance?.enableAutoTap()
+
+        if (isRequestPending) return
+
+        isRequestPending = true
+
         // Wake the screen if it is off so the system permission dialog is visible.
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!pm.isInteractive) {
@@ -189,9 +201,6 @@ class MirrorService : Service() {
             )
             wl.acquire(5000L)
         }
-
-        // Enable auto-tap so the AccessibilityService taps "Allow" automatically.
-        TouchInjectionService.instance?.enableAutoTap()
 
         // Launch the transparent Activity that fires createScreenCaptureIntent().
         val intent = Intent(this, ProjectionRequestActivity::class.java)
@@ -208,6 +217,7 @@ class MirrorService : Service() {
      * @param reason Short machine-readable reason string (e.g. "user_denied").
      */
     fun broadcastCaptureFailed(reason: String) {
+        isRequestPending = false
         webServer?.streamSession?.broadcastCaptureFailed(reason)
     }
 
@@ -292,6 +302,7 @@ class MirrorService : Service() {
             }
         }
 
+        isRequestPending = false
         isCapturing = true
         webServer?.streamSession?.isCapturing = true
         updateNotification()

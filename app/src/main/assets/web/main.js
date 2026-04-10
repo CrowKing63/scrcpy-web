@@ -1198,8 +1198,10 @@ class ScrcpyWeb {
             case 'capture_starting':
                 dot.className = 'status-dot connecting';
                 label.textContent = 'Starting…';
-                hint.textContent = 'Tap Allow on your phone if prompted.';
+                hint.textContent = 'Tap Allow on your phone if prompted. If unlocking with PIN, tap Retry after unlocking.';
                 this._setCaptureStarting(true);
+                startBtn.disabled = false;
+                startBtn.textContent = 'Retry';
                 break;
             case 'connected':
                 dot.className = 'status-dot connected';

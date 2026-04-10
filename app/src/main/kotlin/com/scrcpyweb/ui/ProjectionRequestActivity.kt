@@ -69,6 +69,11 @@ class ProjectionRequestActivity : AppCompatActivity() {
         armAutoTap()
     }
 
+    override fun onResume() {
+        super.onResume()
+        armAutoTap()
+    }
+
     private fun armAutoTap() {
         val service = TouchInjectionService.instance
         if (service != null) {
