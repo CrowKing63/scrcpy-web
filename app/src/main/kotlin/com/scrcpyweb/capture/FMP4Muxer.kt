@@ -31,11 +31,26 @@ class FMP4Muxer(
     private var sequenceNumber = 1
     private var trackId = 1
     private val timescale = 90000  // 90 kHz — standard for video
-    private var firstDts: Long = -1L  // first DTS for timestamp normalization
+    private var serviceStartTime: Long = -1L  // reference T0 for timestamp normalization
 
     // ─────────────────────────────────────────────────────────
     //  Public API
     // ─────────────────────────────────────────────────────────
+
+    /**
+     * Normalizes the given presentation timestamp relative to the service start time.
+     * Uses Long (64-bit) to maintain precision and prevents 32-bit overflow
+     * (which would otherwise occur after ~13 hours of streaming).
+     *
+     * @param presentationTimeUs Raw timestamp in microseconds.
+     * @return Normalized timestamp relative to T0.
+     */
+    fun calculateTimestamp(presentationTimeUs: Long): Long {
+        if (serviceStartTime < 0L) {
+            serviceStartTime = presentationTimeUs
+        }
+        return presentationTimeUs - serviceStartTime
+    }
 
     /**
      * Generates the fMP4 init segment (ftyp + moov boxes).
@@ -64,12 +79,12 @@ class FMP4Muxer(
     fun muxFrame(data: ByteArray, isKeyFrame: Boolean, pts: Long, dts: Long): ByteArray? {
         // Normalise timestamps so tfdt starts at 0, preventing 32-bit overflow
         // when the device has been running for more than ~13 hours.
-        if (firstDts < 0L) {
+        if (serviceStartTime < 0L) {
             if (!isKeyFrame) return null
-            firstDts = dts
+            serviceStartTime = dts
         }
-        val normPts = pts - firstDts
-        val normDts = dts - firstDts
+        val normPts = pts - serviceStartTime
+        val normDts = dts - serviceStartTime
 
         val avcc = annexBToAvcc(data)
         val moof = buildMoof(isKeyFrame, normPts, normDts, avcc.size)
@@ -89,7 +104,7 @@ class FMP4Muxer(
      */
     fun resetSequence() {
         sequenceNumber = 1
-        firstDts = -1L
+        serviceStartTime = -1L
     }
 
     // ─────────────────────────────────────────────────────────
@@ -301,14 +316,14 @@ class FMP4Muxer(
         val mfhd = buildMfhd()
         val moofBytes = buildBox("moof", mfhd + traf)
         // Patch trun data-offset: offset from start of moof to first sample byte.
-        // Layout (all fixed-size): moof(8) + mfhd(16) + traf(8) + tfhd(16) + tfdt(16)
-        //   + trun(8) + version/flags(4) + sampleCount(4) + data-offset(4) = offset 80
+        // Layout (all fixed-size): moof(8) + mfhd(16) + traf(8) + tfhd(16) + tfdt(20)
+        //   + trun(8) + version/flags(4) + sampleCount(4) + data-offset(4) = offset 84
         // data-offset = moofSize + 8 (mdat box header)
         val dataOffset = moofBytes.size + 8
-        moofBytes[80] = (dataOffset shr 24 and 0xFF).toByte()
-        moofBytes[81] = (dataOffset shr 16 and 0xFF).toByte()
-        moofBytes[82] = (dataOffset shr 8  and 0xFF).toByte()
-        moofBytes[83] = (dataOffset        and 0xFF).toByte()
+        moofBytes[84] = (dataOffset shr 24 and 0xFF).toByte()
+        moofBytes[85] = (dataOffset shr 16 and 0xFF).toByte()
+        moofBytes[86] = (dataOffset shr 8  and 0xFF).toByte()
+        moofBytes[87] = (dataOffset        and 0xFF).toByte()
         return moofBytes
     }
 
@@ -337,9 +352,9 @@ class FMP4Muxer(
         // Convert microseconds to timescale ticks
         val decodingTime = dts * timescale / 1_000_000L
         val body = ByteArrayOutputStream()
-        body.write(0)                     // version 0 (32-bit time)
+        body.write(1)                     // version 1 (64-bit time)
         body.write(byteArrayOf(0, 0, 0))  // flags
-        body.writeUint32(decodingTime)
+        body.writeUint64(decodingTime)
         return buildBox("tfdt", body.toByteArray())
     }
 
@@ -454,6 +469,17 @@ class FMP4Muxer(
     // ─────────────────────────────────────────────────────────
     //  ByteArrayOutputStream extension write helpers
     // ─────────────────────────────────────────────────────────
+
+    private fun ByteArrayOutputStream.writeUint64(value: Long) {
+        write((value shr 56 and 0xFF).toInt())
+        write((value shr 48 and 0xFF).toInt())
+        write((value shr 40 and 0xFF).toInt())
+        write((value shr 32 and 0xFF).toInt())
+        write((value shr 24 and 0xFF).toInt())
+        write((value shr 16 and 0xFF).toInt())
+        write((value shr 8 and 0xFF).toInt())
+        write((value and 0xFF).toInt())
+    }
 
     private fun ByteArrayOutputStream.writeUint32(value: Long) {
         write((value shr 24 and 0xFF).toInt())

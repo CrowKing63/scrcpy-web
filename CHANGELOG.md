@@ -3,6 +3,13 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.3.6] - 2026-04-10
+
+### Fixed
+- **Long-session Stability:** Fixed 32-bit timestamp overflow in `FMP4Muxer` by switching to 64-bit `tfdt` (version 1) and normalizing presentation timestamps relative to the service start time. This prevents video freezes that previously occurred after approximately 13 hours of continuous streaming.
+- **Capture State Synchronization:** Refactored `StreamSession` and `WebServer` to use `MirrorService` as the single source of truth for capture state, and added thread synchronization to session management to prevent race conditions during client connection/disconnection.
+- **Client Reconnection:** Updated the web UI to immediately request capture status upon WebSocket reconnection, ensuring the dashboard state accurately reflects the device's current capture status.
+
 ## [2.3.5] - 2026-04-10
 
 ### Fixed

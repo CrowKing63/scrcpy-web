@@ -1,6 +1,7 @@
 package com.scrcpyweb.server
 
 import android.content.res.AssetManager
+import com.scrcpyweb.service.MirrorService
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -23,10 +24,12 @@ import kotlin.time.Duration.Companion.seconds
  *
  * @param port         TCP port to listen on (default 8080).
  * @param assetManager Android AssetManager used to read files from assets/web/.
+ * @param service      MirrorService instance for capture state tracking.
  */
 class WebServer(
     private val port: Int = 8080,
-    private val assetManager: AssetManager
+    private val assetManager: AssetManager,
+    private val service: MirrorService
 ) {
     private var server: EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration>? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -41,7 +44,7 @@ class WebServer(
     var onStopCapture: (() -> Unit)? = null
 
     /** The shared session manager used by the WebSocket route. */
-    val streamSession = StreamSession()
+    val streamSession = StreamSession(service)
 
     /**
      * Starts the embedded Netty server. Non-blocking — server runs on IO threads.

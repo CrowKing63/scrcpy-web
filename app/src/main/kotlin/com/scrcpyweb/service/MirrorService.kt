@@ -125,7 +125,7 @@ class MirrorService : Service() {
 
     private fun startWebServer() {
         val port = getPreferredPort()
-        webServer = WebServer(port = port, assetManager = assets).also { server ->
+        webServer = WebServer(port = port, assetManager = assets, service = this).also { server ->
             server.onDeviceInfoRequest = { getDeviceInfo() }
             server.onStartCapture = {
                 // Browser requested capture start — delegate to the full
@@ -304,7 +304,6 @@ class MirrorService : Service() {
 
         isRequestPending = false
         isCapturing = true
-        webServer?.streamSession?.isCapturing = true
         updateNotification()
         webServer?.streamSession?.broadcastCaptureState(true)
     }
@@ -313,7 +312,6 @@ class MirrorService : Service() {
      * Stops the capture pipeline and releases all resources in reverse init order.
      */
     fun stopCapture() {
-        webServer?.streamSession?.isCapturing = false
         webServer?.streamSession?.broadcastCaptureState(false)
         screenCapture?.stop()
         screenCapture = null

@@ -498,6 +498,9 @@ class ScrcpyWeb {
 
         ws.onopen = () => {
             this._reconnectDelay = 1000;
+            // Force server to report current capture state immediately on connect.
+            this._send({ type: 'get_capture_status' });
+
             if (this._mirroring) {
                 // Reconnecting while capture was active — resume MSE immediately.
                 this._initMSEPlayer();

@@ -1,5 +1,6 @@
 package com.scrcpyweb.server
 
+import com.scrcpyweb.service.MirrorService
 import com.scrcpyweb.service.TouchInjectionService
 import io.ktor.websocket.Frame
 import io.ktor.websocket.WebSocketSession
@@ -19,8 +20,10 @@ import java.util.concurrent.ConcurrentHashMap
  *  - Parses incoming JSON control messages and dispatches them to
  *    [TouchInjectionService] for gesture/navigation injection.
  *  - Maintains a thread-safe map of active sessions.
+ *
+ * @param service MirrorService instance for capture state tracking.
  */
-class StreamSession {
+class StreamSession(private val service: MirrorService) {
 
     /** All currently connected WebSocket sessions, keyed by a unique session ID. */
     private val sessions = ConcurrentHashMap<String, WebSocketSession>()
@@ -30,13 +33,9 @@ class StreamSession {
     var initSegment: ByteArray? = null
 
     /**
-     * Whether screen capture is currently active.
-     * Used to inform clients that connect after capture has stopped so they
-     * receive a [capture_stopped] notification rather than waiting forever for
-     * frames that will never arrive.
+     * Read-only capture state from MirrorService (SSOT).
      */
-    @Volatile
-    var isCapturing: Boolean = false
+    val isCapturing: Boolean get() = service.isCapturing
 
     /**
      * Called when a new client connects so the caller can request an IDR frame.
@@ -68,6 +67,9 @@ class StreamSession {
     /** Per-session status channels for JSON text delivery (e.g. capture_stopped). */
     private val statusListeners = ConcurrentHashMap<String, (String) -> Unit>()
 
+    /** Lock for session management. */
+    private val sessionLock = Any()
+
     /**
      * Handles a single incoming WebSocket session.
      *
@@ -79,8 +81,12 @@ class StreamSession {
      */
     suspend fun handleSession(session: WebSocketSession) {
         val id = System.nanoTime().toString()
-        val isFirstClient = sessions.isEmpty()
-        sessions[id] = session
+        val isFirstClient: Boolean
+        
+        synchronized(sessionLock) {
+            isFirstClient = sessions.isEmpty()
+            sessions[id] = session
+        }
 
         // Per-session channels carry payloads in insertion order so that
         // init segments (0x01) and media frames (0x02/0x03) are never reordered.
@@ -95,7 +101,7 @@ class StreamSession {
         // Register listeners BEFORE enqueuing the init segment so that any
         // concurrent updateInitSegment() call also goes through the channel.
         var clientReceivedLiveIdr = false
-        frameListeners[id]  = { rawFrame ->
+        val frameListener: (ByteArray) -> Unit = { rawFrame ->
             val type = rawFrame[0].toInt()
             if (type == 0x03) {
                 clientReceivedLiveIdr = true
@@ -107,17 +113,26 @@ class StreamSession {
                 frameChannel.trySend(rawFrame)
             }
         }
-        statusListeners[id] = { msg      -> statusChannel.trySend(msg) }
+        val statusListener: (String) -> Unit = { msg -> statusChannel.trySend(msg) }
+
+        synchronized(sessionLock) {
+            frameListeners[id] = frameListener
+            statusListeners[id] = statusListener
+        }
 
         // Always enqueue the cached init segment (if any) so new clients can
         // set up the MSE SourceBuffer immediately.
         initSegment?.let { init ->
             frameChannel.trySend(buildHeader(0x01, init.size) + init)
         }
+        
         // If capture is not active, also notify the client so the UI can
         // prompt the user to restart rather than waiting on a black screen.
         if (!isCapturing) {
             statusChannel.trySend("""{"type":"capture_stopped"}""")
+        } else {
+            // Already capturing, join the stream immediately.
+            statusChannel.trySend("""{"type":"capture_started"}""")
         }
 
         // Per-session pointer tracking: pointerId → (startX, startY, startTimeMs)
@@ -157,9 +172,11 @@ class StreamSession {
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
-            sessions.remove(id)
-            frameListeners.remove(id)
-            statusListeners.remove(id)
+            synchronized(sessionLock) {
+                sessions.remove(id)
+                frameListeners.remove(id)
+                statusListeners.remove(id)
+            }
             frameChannel.close()
             statusChannel.close()
         }
@@ -178,7 +195,7 @@ class StreamSession {
         val type   = if (isKeyFrame) 0x03 else 0x02
         val header = buildHeader(type, frameData.size)
         val packet = header + frameData
-        frameListeners.values.forEach { listener -> listener(packet) }
+        frameListeners.values.forEach { it(packet) }
     }
 
     /**
@@ -189,7 +206,7 @@ class StreamSession {
     fun updateInitSegment(segment: ByteArray) {
         initSegment = segment
         val packet  = buildHeader(0x01, segment.size) + segment
-        frameListeners.values.forEach { listener -> listener(packet) }
+        frameListeners.values.forEach { it(packet) }
     }
 
     /**
