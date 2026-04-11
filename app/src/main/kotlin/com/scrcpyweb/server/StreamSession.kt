@@ -256,6 +256,9 @@ class StreamSession(private val service: MirrorService) {
             val json = JSONObject(text)
             when (val type = json.optString("type")) {
                 "config" -> { /* no-op: config is applied via SharedPreferences in MirrorService */ }
+                "get_capture_status" -> {
+                    broadcastCaptureState(isCapturing)
+                }
                 "restart_capture" -> {
                     val ok = onRestartCapture?.invoke() ?: false
                     if (ok) {

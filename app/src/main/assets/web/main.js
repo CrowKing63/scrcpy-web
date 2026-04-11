@@ -1184,7 +1184,7 @@ class ScrcpyWeb {
         // Reset overlays and button to defaults on every state change.
         this._setCaptureStarting(false);
         this._setCaptureStopped(false);
-        startBtn.disabled = true;
+        startBtn.disabled = false; // Always enabled for manual recovery and better UX
         startBtn.textContent = 'Start Mirroring';
         hint.textContent = '';
 
@@ -1209,6 +1209,7 @@ class ScrcpyWeb {
             case 'connected':
                 dot.className = 'status-dot connected';
                 label.textContent = 'Mirroring';
+                startBtn.textContent = 'Restart Mirroring';
                 break;
             case 'capture_stopped':
                 dot.className = 'status-dot disconnected';
