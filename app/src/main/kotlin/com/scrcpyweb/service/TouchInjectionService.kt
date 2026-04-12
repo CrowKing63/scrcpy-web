@@ -64,6 +64,13 @@ class TouchInjectionService : AccessibilityService() {
     @Volatile
     private var dropDownOpened = false
 
+    /**
+     * Returns the package name of the currently active (topmost) application.
+     * Requires the service to be enabled and interactive.
+     */
+    val activeAppPackage: String?
+        get() = rootInActiveWindow?.packageName?.toString()
+
     override fun onServiceConnected() {
         instance = this
     }

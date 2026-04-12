@@ -3,138 +3,239 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="SCRCPY-Web — mirror and control your Android screen from any browser over Wi-Fi." />
-    <title>SCRCPY-Web</title>
+    <meta name="description" content="SCRCPY-Web — mirror and control your Android screen." />
+    <title>Android Management Dashboard</title>
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body class="dash-mode">
 
-    <!-- ── Main layout — always visible 3-column ────────────────────── -->
-    <div id="main-layout">
+    <!-- ============================================== -->
+    <!-- VIEW: DASHBOARD (Active when .dash-mode)       -->
+    <!-- ============================================== -->
+    <div id="view-dashboard" class="view-panel view-dashboard">
+        
+        <!-- Left Sidebar -->
+        <aside class="dash-sidebar">
+            <h1 class="dash-logo">ANDROID MANAGEMENT</h1>
+            
+            <nav class="dash-nav">
+                <a href="#" class="nav-item active">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+                    Dashboard
+                </a>
+                <a href="#" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                    Devices
+                </a>
+                <a href="#" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    Applications
+                </a>
+                <a href="#" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    Files
+                </a>
+                <a href="#" class="nav-item">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    Settings
+                </a>
+            </nav>
 
-        <!-- Left sidebar: device info + stats + settings + system controls -->
-        <aside id="left-sidebar" class="sidebar" aria-label="Device status and stream settings">
-            <button class="sidebar-toggle" id="left-toggle" aria-label="Collapse left panel">
-                <span class="toggle-arrow" id="left-arrow"></span>
-            </button>
-            <div class="sidebar-content">
-
-                <!-- Device / connection section -->
-                <section class="sidebar-section" id="device-section">
-                    <h2 class="sidebar-section-title">Device</h2>
-                    <div class="device-info-rows">
-                        <div class="device-row">
-                            <span class="device-label">Model</span>
-                            <span class="device-value" id="dash-device-model">—</span>
-                        </div>
-                        <div class="device-row">
-                            <span class="device-label">Android</span>
-                            <span class="device-value" id="dash-android-version">—</span>
-                        </div>
-                        <div class="device-row">
-                            <span class="device-label">Battery</span>
-                            <span class="device-value" id="dash-battery">—</span>
-                        </div>
-                        <div class="device-row">
-                            <span class="device-label">IP</span>
-                            <span class="device-value" id="dash-ip">—</span>
-                        </div>
-                    </div>
-                    <div id="dash-accessibility-badge" class="accessibility-badge">Accessibility OFF</div>
-                    <button class="action-btn device-start-btn" id="btn-start-mirroring" disabled>
-                        Start Mirroring
-                    </button>
-                    <p class="sidebar-hint" id="dash-hint"></p>
-                </section>
-
-                <!-- Live stats -->
-                <section class="sidebar-section">
-                    <h2 class="sidebar-section-title">Stats</h2>
-                    <div class="stat-row">
-                        <span>FPS</span>
-                        <span class="stat-value" id="fps-counter">0 fps</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Latency</span>
-                        <span class="stat-value" id="latency-indicator">—</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Status</span>
-                        <span class="stat-value status-row-value">
-                            <span id="connection-status" class="status-dot"></span>
-                            <span id="connection-status-label">Connecting…</span>
-                        </span>
-                    </div>
-                </section>
-
-                <!-- Stream settings -->
-                <section class="sidebar-section">
-                    <h2 class="sidebar-section-title">Stream</h2>
-                    <label class="setting-row">
-                        <span>Resolution <span id="resolution-value">75%</span></span>
-                        <input type="range" id="range-resolution" min="25" max="100" step="25" value="75" />
-                    </label>
-                    <label class="setting-row">
-                        <span>Bitrate <span id="bitrate-value">4 Mbps</span></span>
-                        <input type="range" id="range-bitrate" min="1" max="8" step="1" value="4" />
-                    </label>
-                    <label class="setting-row">
-                        <span>Max FPS <span id="fps-value">30</span></span>
-                        <input type="range" id="range-fps" min="15" max="60" step="5" value="30" />
-                    </label>
-                </section>
-
-                <!-- System controls -->
-                <section class="sidebar-section">
-                    <h2 class="sidebar-section-title">System</h2>
-                    <div class="system-btn-row">
-                        <button class="sys-btn" id="btn-rotate" title="Rotate screen" aria-label="Rotate screen"></button>
-                        <button class="sys-btn" id="btn-fullscreen" title="Fullscreen" aria-label="Toggle fullscreen"></button>
-                    </div>
-                </section>
-            </div>
-        </aside>
-
-        <!-- Center: video area — always visible, touchable even when black -->
-        <div id="video-area">
-            <video
-                id="video-player"
-                playsinline
-                muted
-                autoplay
-                disablePictureInPicture
-            ></video>
-
-        </div>
-
-        <!-- Right sidebar: customizable keypad -->
-        <aside id="right-sidebar" class="sidebar" aria-label="Customizable keypad">
-            <button class="sidebar-toggle" id="right-toggle" aria-label="Collapse right panel">
-                <span class="toggle-arrow" id="right-arrow"></span>
-            </button>
-            <div class="sidebar-content">
-                <div class="keypad-header">
-                    <span class="keypad-title">Controls</span>
-                    <div class="keypad-header-btns">
-                        <button class="icon-btn" id="btn-numpad-toggle" title="Toggle numpad" aria-label="Toggle numpad">123</button>
-                        <button class="icon-btn" id="btn-add-key" title="Add button" aria-label="Add button" style="display:none"></button>
-                        <button class="icon-btn" id="btn-edit-keypad" title="Edit keypad" aria-label="Toggle edit mode"></button>
+            <div class="dash-device-card">
+                <h3 class="card-sm-title">DEVICE INFO</h3>
+                <div class="device-card-inner">
+                    <svg class="device-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                    <div class="device-card-content">
+                        <div class="dc-row"><span class="dc-lbl">Model:</span> <span id="dash-device-model">Loading...</span></div>
+                        <div class="dc-row"><span class="dc-lbl">Android:</span> <span id="dash-android-version">--</span></div>
+                        <div class="dc-row"><span class="dc-lbl">IP:</span> <span id="dash-ip">...</span></div>
+                        <div class="dc-row"><span class="dc-lbl">Battery:</span> <span id="dash-battery">--%</span></div>
+                        <div class="dc-battery-bar"><div id="battery-fill" class="dc-battery-fill" style="width:0%"></div></div>
                     </div>
                 </div>
-                <div id="keypad-grid"></div>
-
-                <!-- Inline numpad for text-field key input -->
-                <div id="numpad-panel" class="numpad-panel hidden" aria-label="Numeric keypad">
-                    <div class="numpad-grid" id="numpad-grid"></div>
+                <div class="dc-connection">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                    <span>Connection: <span id="connection-status-label">Connected</span></span>
                 </div>
             </div>
+
+            <button id="btn-start-mirroring" class="glow-btn">Start Mirroring</button>
         </aside>
+
+        <!-- Main Dashboard Content -->
+        <main class="dash-main">
+            <!-- Top Nav -->
+            <header class="dash-top">
+                <div style="flex:1"></div>
+                <div class="dash-top-icons">
+                    <button class="top-icon-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>
+                    <button class="top-icon-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></button>
+                    <div class="top-profile">
+                        <div class="profile-avatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg></div>
+                        <span>Admin</span>
+                    </div>
+                </div>
+            </header>
+
+            <h2 class="dash-page-title">Android Management Dashboard</h2>
+
+            <!-- Cards Grid -->
+            <div class="dash-grid">
+                <!-- Device Status -->
+                <div class="dash-card">
+                    <h3 class="dash-card-title">DEVICE STATUS</h3>
+                    <div class="circle-progress-wrapper">
+                        <svg class="circle-progress" viewBox="0 0 100 100">
+                            <circle class="circle-bg" cx="50" cy="50" r="40"></circle>
+                            <circle id="circle-fg-charge" class="circle-fg" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="251.2"></circle>
+                        </svg>
+                        <div class="circle-text">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                            <span class="circle-val" id="circle-val-charge">--%</span>
+                            <span class="circle-lbl" id="circle-lbl-charge">--</span>
+                        </div>
+                    </div>
+                    <div class="status-list">
+                        <div class="s-row">
+                            <div class="s-lbl"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg> Wi-Fi Signal:</div>
+                            <div class="s-val green">Excellent</div>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-lbl"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/></svg> Bluetooth:</div>
+                            <div class="s-val">On</div>
+                        </div>
+                        <div class="s-row">
+                            <div class="s-lbl"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg> Last Sync:</div>
+                            <div class="s-val">just now</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications -->
+                <div class="dash-card">
+                    <div class="card-header">
+                        <h3 class="dash-card-title">NOTIFICATION CENTER</h3>
+                        <button class="btn-clear-all" onclick="document.getElementById('notification-list').innerHTML='<div class=\'no-noti\'>No notifications</div>'">Clear All</button>
+                    </div>
+                    <div id="notification-list" class="notification-list">
+                        <div class="no-notifications" style="font-size: 13px; color: var(--text-muted); text-align: center; padding: 20px;">No recent notifications</div>
+                    </div>
+                </div>
+
+                <!-- System Stats -->
+                <div class="dash-card">
+                    <h3 class="dash-card-title">SYSTEM STATS</h3>
+                    
+                    <div class="stat-block">
+                        <div class="sb-header">
+                            <div><span class="sb-lbl">FPS:</span> <span class="sb-val highlight" id="fps-counter">58 fps</span></div>
+                            <!-- Mock chart -->
+                            <svg class="sb-chart" width="100" height="20" viewBox="0 0 100 20"><path d="M0,15 Q10,5 20,10 T40,15 T60,5 T80,12 T100,5" fill="none" stroke="#00e5ff" stroke-width="2"/></svg>
+                        </div>
+                    </div>
+
+                    <div class="stat-bars">
+                        <div class="st-row">
+                            <div class="st-labels"><span>Latency</span> <span id="latency-indicator">18 ms</span></div>
+                            <div class="st-bar"><div class="st-fill" style="width:20%"></div></div>
+                        </div>
+                        <div class="st-row">
+                            <div class="st-labels"><span>CPU Usage</span> <span>32%</span></div>
+                            <div class="st-bar"><div class="st-fill" style="width:32%"></div></div>
+                        </div>
+                        <div class="st-row">
+                            <div class="st-labels"><span>RAM Usage</span> <span>45% (3.6GB/8GB)</span></div>
+                            <div class="st-bar"><div class="st-fill" style="width:45%"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
 
-    <!-- ── Key editor modal ──────────────────────────────────────── -->
+    <!-- ============================================== -->
+    <!-- VIEW: MIRRORING (Active when NOT .dash-mode)   -->
+    <!-- ============================================== -->
+    <div id="view-mirroring" class="view-panel view-mirroring">
+        <header class="app-header">
+            <button class="btn-return" onclick="document.body.classList.add('dash-mode')">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Return to Dashboard
+            </button>
+            <h1 class="header-title">Remote Mirroring View</h1>
+            <div style="width: 170px;"></div>
+        </header>
+
+        <div class="workspace" style="position:relative;">
+            <div id="video-area" class="video-container">
+                <div class="phone-frame">
+                    <video id="video-player" playsinline muted autoplay disablePictureInPicture></video>
+                </div>
+            </div>
+
+            <aside class="right-panels">
+                <div class="panel">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <h2 class="panel-title" style="margin-bottom:0;">Remote Controls</h2>
+                        <div style="display:flex; gap:8px;">
+                            <button id="btn-add-key" class="top-icon-btn" title="Add Key" style="display:none;"></button>
+                            <button id="btn-edit-keypad" class="top-icon-btn" title="Edit Keypad"></button>
+                        </div>
+                    </div>
+                    <div id="keypad-grid" class="control-grid"></div>
+                </div>
+
+                <div class="panel mt-4">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                        <h2 class="panel-title" style="margin-bottom:0;">Stream Settings</h2>
+                        <div style="display:flex; gap:8px;">
+                            <button id="btn-rotate" class="top-icon-btn" title="Rotate"></button>
+                            <button id="btn-fullscreen" class="top-icon-btn" title="Fullscreen"></button>
+                        </div>
+                    </div>
+                    
+                    <div class="slider-group">
+                        <label class="setting-row">
+                            <span>Resolution</span>
+                            <span id="resolution-value" class="setting-val">75%</span>
+                        </label>
+                        <input class="slider" type="range" id="range-resolution" min="25" max="100" step="25" value="75" />
+                    </div>
+                    
+                    <div class="slider-group mt-3">
+                        <label class="setting-row">
+                            <span>Bitrate</span>
+                            <span id="bitrate-value" class="setting-val">6 Mbps</span>
+                        </label>
+                        <input class="slider" type="range" id="range-bitrate" min="1" max="8" step="1" value="6" />
+                    </div>
+                    
+                    <div class="slider-group mt-3" style="display:none;">
+                        <input class="slider" type="range" id="range-fps" min="15" max="60" step="5" value="30" />
+                        <span id="fps-value"></span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Hidden elements required by main.js to function correctly -->
+    <div style="display:none;" id="hidden-legacy">
+        <div id="left-sidebar"></div><button id="left-toggle"></button>
+        <span id="dash-active-app"></span>
+        <span id="dash-accessibility-badge"></span><span id="dash-notification-badge"></span>
+        <span id="connection-status"></span>
+        <p id="dash-hint"></p>
+        <aside id="right-sidebar"></aside>
+        <button id="right-toggle"></button><button id="btn-numpad-toggle"></button>
+        <div id="numpad-grid"></div>
+    </div>
+
+    <!-- Key editor modal -->
     <div id="key-editor-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-backdrop" id="modal-backdrop"></div>
         <div class="modal-card">
@@ -156,8 +257,6 @@
                         <option value="text">Type text</option>
                     </select>
                 </div>
-
-                <!-- Nav params -->
                 <div class="action-params active" id="params-nav">
                     <div class="modal-field">
                         <label for="nav-action-select">Action</label>
@@ -172,8 +271,6 @@
                         </select>
                     </div>
                 </div>
-
-                <!-- Scroll params -->
                 <div class="action-params" id="params-scroll">
                     <div class="modal-field">
                         <label for="scroll-dir-select">Direction</label>
@@ -189,16 +286,12 @@
                         <input type="number" id="scroll-delta-input" value="120" min="10" max="1000" step="10" />
                     </div>
                 </div>
-
-                <!-- Key params -->
                 <div class="action-params" id="params-key">
                     <div class="modal-field">
                         <label for="key-code-input">Android key code</label>
                         <input type="number" id="key-code-input" placeholder="e.g. 66 for Enter" min="1" max="999" />
                     </div>
                 </div>
-
-                <!-- Text params -->
                 <div class="action-params" id="params-text">
                     <div class="modal-field">
                         <label for="key-text-input">Text to type</label>

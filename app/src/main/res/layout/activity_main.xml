@@ -143,6 +143,18 @@
                     app:cornerRadius="12dp"
                     app:strokeColor="#9E9E9E"
                     app:strokeWidth="1dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnNotification"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="8dp"
+                    android:text="Enable Notification Listener"
+                    android:textColor="#E0E0E0"
+                    app:backgroundTint="#2A2A3E"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="#9E9E9E"
+                    app:strokeWidth="1dp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

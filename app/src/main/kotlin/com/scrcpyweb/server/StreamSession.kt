@@ -232,6 +232,16 @@ class StreamSession(private val service: MirrorService) {
     }
 
     /**
+     * Broadcasts a generic status message (JSON) to all connected WebSocket clients.
+     * Used for notifications and periodic device status updates.
+     */
+    fun broadcastStatus(json: String) {
+        synchronized(sessionLock) {
+            statusListeners.values.forEach { it(json) }
+        }
+    }
+
+    /**
      * Returns the number of currently connected WebSocket clients.
      */
     fun clientCount(): Int = sessions.size
@@ -258,6 +268,26 @@ class StreamSession(private val service: MirrorService) {
                 "config" -> { /* no-op: config is applied via SharedPreferences in MirrorService */ }
                 "get_capture_status" -> {
                     broadcastCaptureState(isCapturing)
+                }
+                "get_notifications" -> {
+                    try {
+                        val active = com.scrcpyweb.service.NotificationService.instance?.activeNotifications
+                        active?.forEach { sbn ->
+                            val notification = sbn.notification ?: return@forEach
+                            val extras = notification.extras ?: return@forEach
+                            val jsonNotif = JSONObject().apply {
+                                put("type", "notification")
+                                put("packageName", sbn.packageName)
+                                put("title", extras.getCharSequence("android.title")?.toString() ?: "")
+                                put("text", extras.getCharSequence("android.text")?.toString() ?: "")
+                                put("subText", extras.getCharSequence("android.subText")?.toString() ?: "")
+                                put("timestamp", sbn.postTime)
+                            }
+                            session.send(Frame.Text(jsonNotif.toString()))
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
                 "restart_capture" -> {
                     val ok = onRestartCapture?.invoke() ?: false

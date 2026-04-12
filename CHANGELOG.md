@@ -3,6 +3,17 @@
 All notable changes to SCRCPY-Web are documented here.
 This project adheres to [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [2.4.0] - 2026-04-12
+
+### Added
+- **Android Management Dashboard:** Redesigned architecture to function as a fully featured management dashboard without running screen mirroring continuously.
+- **Notification Synchronization:** Real-time push transmission of Android `StatusBarNotification` payloads to the web dashboard, providing instant device alerts directly in the browser even when mirroring is off.
+- **On-Demand Remote Mirroring:** Video capturing is triggered explicitly only when users click "Start Mirroring," massively reducing overall background load and battery consumption.
+
+### Changed
+- **Optimized Server Polling:** `MirrorService` now only polls for device states and invokes costly OS interfaces when web clients are genuinely connected. This optimization eliminates unnecessary battery drain, achieving a near 0% battery footprint when idle.
+- README update to include the new Android Management Dashboard architecture with visual demonstrations.
+
 ## [2.3.6] - 2026-04-10
 
 ### Fixed

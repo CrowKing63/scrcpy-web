@@ -3,19 +3,22 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/CrowKing63/scrcpy-web)](https://github.com/CrowKing63/scrcpy-web/releases)
 
-Mirror and control your Android screen from any browser over local Wi-Fi — no PC required.
+A full-featured Android Management Dashboard that lets you manage your phone and mirror your screen from any browser over local Wi-Fi — no PC required.
 
-![SCRCPY-Web on Apple Vision Pro](https://via.placeholder.com/1200x675?text=Apple+Vision+Pro+Capture+Screenshot+Placeholder)
-*Designed for Apple Vision Pro Safari (Spatial Display)*
+![Android Management Dashboard](android-management-dashboard.png)
+*Receive device notifications, check battery, and manage your device in real-time, completely in the background with zero performance overhead.*
+
+![Remote Mirroring View](remote-mirroring-view.png)
+*Start full remote mirroring only when you need it, optimizing your phone's battery life.*
 
 ---
 
-## Recent Highlights (v2.3.0)
+## Recent Highlights (v2.4.0)
 
+- **Android Management Dashboard**: Real-time notification synchronization and device status without starting video capture, saving massive battery power.
+- **On-Demand Remote Mirroring**: Video stream only kicks in when you explicitly click "Start Mirroring", keeping the background server footprint near 0%.
 - **Mac/Linux Guided Installer**: New `install.sh` script with Mac ADB binaries for one-click setup.
 - **Samsung One UI Support**: Accessibility service now automatically handles complex multi-step "Full Screen" capture dialogs on Galaxy devices.
-- **Stable Mirroring**: Fixed initialization race conditions (black screen fix) and improved frame synchronization.
-- **Configurable Port**: Specify your custom server port in the app settings.
 
 ---
 

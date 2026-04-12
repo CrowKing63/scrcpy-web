@@ -432,6 +432,8 @@ class ScrcpyWeb {
         this._mirroring = false;
         /** Interval ID for polling /api/device-info. */
         this._deviceInfoInterval = null;
+        /** Notification history list. */
+        this._notifications = [];
 
         // Restore last known phone aspect ratio so the border stays phone-shaped
         // even before the first video stream loads.
@@ -454,6 +456,9 @@ class ScrcpyWeb {
         this._keypadManager.render();
 
         this._initNumpad();
+
+        // Initial UI state: Dashboard mode
+        document.body.classList.add('dash-mode');
     }
 
     // ── Dashboard ───────────────────────────────────────────────────────
@@ -482,6 +487,74 @@ class ScrcpyWeb {
         }
     }
 
+    /**
+     * Handles incoming notification data.
+     */
+    _handleNotification(notif) {
+        this._notifications.unshift({
+            ...notif,
+            receivedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+        if (this._notifications.length > 20) this._notifications.pop();
+        this._renderNotifications();
+    }
+
+    /**
+     * Renders the notification list.
+     */
+    _renderNotifications() {
+        const list = document.getElementById('notification-list');
+        if (!list) return;
+
+        if (this._notifications.length === 0) {
+            list.innerHTML = '<div class="no-notifications">No recent notifications</div>';
+            return;
+        }
+
+        const getIconInfo = (pkg) => {
+            const low = pkg.toLowerCase();
+            let bg = 'rgba(0, 140, 255, 0.15)', color = '#00a2ff', icon = 'M';
+            if (low.includes('talk') || low.includes('kakao')) { bg = 'rgba(255, 235, 59, 0.15)'; color = '#fbc02d'; icon = 'K'; }
+            else if (low.includes('youtube')) { bg = 'rgba(255, 0, 0, 0.15)'; color = '#ff0000'; icon = 'Y'; }
+            else if (low.includes('spotify') || low.includes('music')) { bg = 'rgba(0, 230, 118, 0.15)'; color = '#00e676'; icon = '▶'; }
+            else if (low.includes('call') || low.includes('dialer')) { bg = 'rgba(255, 82, 82, 0.15)'; color = '#ff5252'; icon = '📞'; }
+            else {
+                // generic
+                const name = pkg.split('.').pop();
+                icon = name ? name.charAt(0).toUpperCase() : 'N';
+            }
+            return {bg, color, icon};
+        };
+
+        list.innerHTML = this._notifications.map(n => {
+            const appName = this._escHtml(n.packageName.split('.').pop());
+            const info = getIconInfo(n.packageName);
+            return `
+            <div class="noti-item">
+                <div class="noti-icon" style="background: ${info.bg}; color: ${info.color};">
+                    ${info.icon}
+                </div>
+                <div class="noti-content">
+                    <div class="noti-top">
+                        <b style="color:var(--text-primary); font-size:13px;">${appName}</b> 
+                        <span style="color:var(--text-muted); font-size:11px;">${n.receivedAt}</span>
+                    </div>
+                    <div class="notification-title" style="margin-top:2px;">${this._escHtml(n.title || '')}</div>
+                    <div class="notification-text" style="opacity:0.8;">${this._escHtml(n.text || '')}</div>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Escapes HTML.
+     */
+    _escHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
     // ── WebSocket connection ────────────────────────────────────────────
 
     /**
@@ -500,6 +573,7 @@ class ScrcpyWeb {
             this._reconnectDelay = 1000;
             // Force server to report current capture state immediately on connect.
             this._send({ type: 'get_capture_status' });
+            this._send({ type: 'get_notifications' });
 
             if (this._mirroring) {
                 // Reconnecting while capture was active — resume MSE immediately.
@@ -527,17 +601,27 @@ class ScrcpyWeb {
                             this._initMSEPlayer();
                             this._updateConnectionUI('capture_starting');
                             this._setCaptureStarting(true);
+                            document.body.classList.remove('dash-mode');
                             break;
                         case 'capture_started':
                             this._updateConnectionUI('connected');
+                            document.body.classList.remove('dash-mode');
                             break;
                         case 'capture_stopped':
                             this._clearKeyframeTimer();
                             this._updateConnectionUI('capture_stopped');
+                            document.body.classList.add('dash-mode');
                             break;
                         case 'capture_failed':
                             this._mirroring = false;
                             this._updateConnectionUI('capture_failed');
+                            document.body.classList.add('dash-mode');
+                            break;
+                        case 'device_status':
+                            this._updateDeviceStatus(msg);
+                            break;
+                        case 'notification':
+                            this._handleNotification(msg);
                             break;
                         case 'permission_needed':
                             this._updateConnectionUI('permission_needed');
@@ -1241,6 +1325,33 @@ class ScrcpyWeb {
     // ── Device info ──────────────────────────────────────────────────────
 
     /**
+     * Updates device status from WebSocket message.
+     */
+    _updateDeviceStatus(msg) {
+        const setTxt = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        if (msg.batteryLevel !== undefined) {
+            setTxt('dash-battery', `${msg.batteryLevel}%${msg.isCharging ? ' ⚡' : ''}`);
+            setTxt('circle-val-charge', `${msg.batteryLevel}%`);
+            setTxt('circle-lbl-charge', msg.isCharging ? 'Charging' : 'Battery');
+            
+            const maxOffset = 251.2;
+            const offset = maxOffset - (msg.batteryLevel / 100) * maxOffset;
+            const circle = document.getElementById('circle-fg-charge');
+            if (circle) circle.style.strokeDashoffset = offset;
+            
+            const fill = document.getElementById('battery-fill');
+            if (fill) fill.style.width = `${msg.batteryLevel}%`;
+        }
+        if (msg.activeApp) {
+            const appName = msg.activeApp.split('.').pop();
+            setTxt('dash-active-app', appName);
+        }
+    }
+
+    /**
      * Fetches device metadata from /api/device-info and updates
      * the dashboard card with model, Android version, battery, IP,
      * and service status indicators.
@@ -1260,12 +1371,32 @@ class ScrcpyWeb {
             setTxt('dash-battery', info.batteryLevel >= 0 ? `${info.batteryLevel}%` : '--');
             setTxt('dash-ip', info.ipAddress ?? '--');
 
+            if (info.batteryLevel !== undefined && info.batteryLevel >= 0) {
+                setTxt('circle-val-charge', `${info.batteryLevel}%`);
+                setTxt('circle-lbl-charge', 'Battery');
+                const maxOffset = 251.2;
+                const offset = maxOffset - (info.batteryLevel / 100) * maxOffset;
+                const circle = document.getElementById('circle-fg-charge');
+                if (circle) circle.style.strokeDashoffset = offset;
+                
+                const fill = document.getElementById('battery-fill');
+                if (fill) fill.style.width = `${info.batteryLevel}%`;
+            }
+
             // Accessibility service badge
             const badge = document.getElementById('dash-accessibility-badge');
             if (badge) {
                 const on = !!info.isAccessibilityEnabled;
                 badge.classList.toggle('enabled', on);
                 badge.textContent = on ? 'Accessibility ON' : 'Accessibility OFF';
+            }
+
+            // Notification listener badge
+            const nBadge = document.getElementById('dash-notification-badge');
+            if (nBadge) {
+                const on = !!info.isNotificationEnabled;
+                nBadge.classList.toggle('enabled', on);
+                nBadge.textContent = on ? 'Notifications ON' : 'Notifications OFF';
             }
         } catch (_) { /* server may not be ready yet */ }
     }

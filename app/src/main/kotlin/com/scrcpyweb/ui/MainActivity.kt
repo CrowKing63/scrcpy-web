@@ -96,6 +96,9 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAccessibility)
             .setOnClickListener { openAccessibilitySettings() }
+
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnNotification)
+            .setOnClickListener { openNotificationSettings() }
     }
 
     private fun startMirrorService() {
@@ -123,6 +126,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun openNotificationSettings() {
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
     // ─────────────────────────────────────────────────────────
@@ -177,6 +184,7 @@ class MainActivity : AppCompatActivity() {
         val isRunning = service != null
         val isCapturing = service?.isCapturing == true
         val isAccessibilityEnabled = TouchInjectionService.instance != null
+        val isNotificationEnabled = isNotificationServiceEnabled()
 
         val statusDot = findViewById<android.view.View>(R.id.statusDot)
         val statusText = findViewById<android.widget.TextView>(R.id.statusText)
@@ -184,6 +192,7 @@ class MainActivity : AppCompatActivity() {
         val btnStart = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnStartServer)
         val btnStop = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnStopServer)
         val btnAccessibility = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnAccessibility)
+        val btnNotification = findViewById<com.google.android.material.button.MaterialButton>(R.id.btnNotification)
 
         // Keep the screen on while actively mirroring so that MediaProjection is
         // not stopped by the keyguard (Android 14+ stops projection on screen lock).
@@ -224,6 +233,29 @@ class MainActivity : AppCompatActivity() {
         val accessColor = if (isAccessibilityEnabled) 0xFF1A3A1A.toInt() else 0xFF2A2A3E.toInt()
         btnAccessibility.backgroundTintList =
             android.content.res.ColorStateList.valueOf(accessColor)
+
+        btnNotification.text = if (isNotificationEnabled)
+            "Notification Listener: Enabled" else "Enable Notification Listener"
+        val notifColor = if (isNotificationEnabled) 0xFF1A3A1A.toInt() else 0xFF2A2A3E.toInt()
+        btnNotification.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(notifColor)
+    }
+
+    private fun isNotificationServiceEnabled(): Boolean {
+        val pkgName = packageName
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+        if (flat != null && flat.isNotEmpty()) {
+            val names = flat.split(":".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+            for (name in names) {
+                val componentName = android.content.ComponentName.unflattenFromString(name)
+                if (componentName != null) {
+                    if (android.text.TextUtils.equals(pkgName, componentName.packageName)) {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
     }
 
     companion object {

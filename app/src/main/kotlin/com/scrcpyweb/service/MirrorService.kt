@@ -22,6 +22,12 @@ import com.scrcpyweb.capture.ScreenCapture
 import com.scrcpyweb.capture.VideoEncoder
 import com.scrcpyweb.server.WebServer
 import com.scrcpyweb.ui.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -67,6 +73,8 @@ class MirrorService : Service() {
     /** Saved MediaProjection result intent data for restarting capture after rotation. */
     private var savedProjectionData: android.content.Intent? = null
 
+    private var statusBroadcastJob: kotlinx.coroutines.Job? = null
+
     // ─────────────────────────────────────────────────────────
     //  Service lifecycle
     // ─────────────────────────────────────────────────────────
@@ -83,6 +91,7 @@ class MirrorService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         )
         startWebServer()
+        startStatusBroadcaster()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -110,6 +119,7 @@ class MirrorService : Service() {
     }
 
     override fun onDestroy() {
+        statusBroadcastJob?.cancel()
         stopCapture()
         webServer?.stop()
         webServer = null
@@ -338,6 +348,47 @@ class MirrorService : Service() {
         startCapture(resultCode, data)
     }
 
+    /**
+     * Periodically broadcasts device status (battery, active app) to all web clients.
+     */
+    private fun startStatusBroadcaster() {
+        statusBroadcastJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                try {
+                    // Only poll and broadcast if there are active connected clients
+                    if ((webServer?.streamSession?.clientCount() ?: 0) > 0) {
+                        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                        val batteryLevel = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else -1
+                        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+                        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || 
+                                         status == BatteryManager.BATTERY_STATUS_FULL
+
+                        val json = org.json.JSONObject().apply {
+                            put("type", "device_status")
+                            put("batteryLevel", batteryLevel)
+                            put("isCharging", isCharging)
+                            put("activeApp", TouchInjectionService.instance?.activeAppPackage ?: "Unknown")
+                            put("timestamp", System.currentTimeMillis())
+                        }
+                        broadcastStatus(json.toString())
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                delay(5000) // 5 seconds interval
+            }
+        }
+    }
+
+    /**
+     * Broadcasts a raw JSON status string to all connected WebSocket clients.
+     */
+    fun broadcastStatus(json: String) {
+        webServer?.streamSession?.broadcastStatus(json)
+    }
+
     // ─────────────────────────────────────────────────────────
     //  Device info
     // ─────────────────────────────────────────────────────────
@@ -351,13 +402,20 @@ class MirrorService : Service() {
     fun getDeviceInfo(): Map<String, Any> {
         val metrics = getScreenMetrics()
         val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val batteryLevel = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val batteryLevel = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else -1
+        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || 
+                         status == BatteryManager.BATTERY_STATUS_FULL
+
         return mapOf(
             "model" to "${Build.MANUFACTURER} ${Build.MODEL}",
             "androidVersion" to Build.VERSION.RELEASE,
             "screenWidth" to metrics.widthPixels,
             "screenHeight" to metrics.heightPixels,
             "batteryLevel" to batteryLevel,
+            "isCharging" to isCharging,
             "ipAddress" to getWifiIpAddress()
         )
     }

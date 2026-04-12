@@ -91,6 +91,10 @@ class WebServer(
             val info = onDeviceInfoRequest?.invoke()?.toMutableMap() ?: mutableMapOf()
             info["isCapturing"] = com.scrcpyweb.service.MirrorService.instance?.isCapturing ?: false
             info["isAccessibilityEnabled"] = com.scrcpyweb.service.TouchInjectionService.instance != null
+            info["isNotificationEnabled"] = (service as? android.content.Context)?.let { ctx ->
+                val flat = android.provider.Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners")
+                flat?.contains(ctx.packageName) == true
+            } ?: false
             call.respondText(
                 mapToJson(info),
                 ContentType.Application.Json
